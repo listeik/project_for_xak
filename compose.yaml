@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      ALLOWED_ORIGINS: "http://localhost:8080,http://127.0.0.1:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/frontend.Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy

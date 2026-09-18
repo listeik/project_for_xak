@@ -1,0 +1,61 @@
+{
+  "plan_id": "hybrid-starting-proposal",
+  "yearly_orders": {
+    "2035": {
+      "A": 110,
+      "B": 0,
+      "C": 0,
+      "D": 0,
+      "E": 0
+    },
+    "2036": {
+      "A": 150,
+      "B": 0,
+      "C": 0,
+      "D": 0,
+      "E": 0
+    },
+    "2037": {
+      "A": 190,
+      "B": 0,
+      "C": 10,
+      "D": 0,
+      "E": 0
+    },
+    "2038": {
+      "A": 190,
+      "B": 0,
+      "C": 0,
+      "D": 80,
+      "E": 0
+    },
+    "2039": {
+      "A": 190,
+      "B": 0,
+      "C": 30,
+      "D": 110,
+      "E": 0
+    },
+    "2040": {
+      "A": 190,
+      "B": 0,
+      "C": 90,
+      "D": 115,
+      "E": 0
+    }
+  },
+  "yearly_reservations": null,
+  "investments": {
+    "zbo_year": 2036,
+    "option_c_year": 2035,
+    "exercise_c_year": 2035,
+    "isru_funding_year": 2037
+  },
+  "scenario": "BASE",
+  "initial_inventory_t": 15.0,
+  "discount_rate": 0.08,
+  "c_lead_months": 24.0,
+  "d_lead_months": 2.0,
+  "demand_factor": 1.0,
+  "price_factor": 1.0
+}

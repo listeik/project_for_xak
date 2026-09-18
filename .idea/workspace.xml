@@ -4,9 +4,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="6c645393-fb6f-4d67-80cc-a441e4c6c74c" name="Changes" comment="Initial commit 2">
+    <list default="true" id="6c645393-fb6f-4d67-80cc-a441e4c6c74c" name="Changes" comment="Обновление проекта от орг">
+      <change beforePath="$PROJECT_DIR$/.github/workflows/validate-reference-repo.yml" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Readme.md" beforeDir="false" afterPath="$PROJECT_DIR$/Readme.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tools/validate_reference_repo.py" beforeDir="false" afterPath="$PROJECT_DIR$/tools/validate_reference_repo.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -32,6 +35,7 @@
   "keyToString": {
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
     "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "master",
     "kotlin-language-version-configured": "true"
@@ -61,7 +65,15 @@
       <option name="project" value="LOCAL" />
       <updated>1789742933905</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="Обновление проекта от орг">
+      <option name="closed" value="true" />
+      <created>1789749221796</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1789749221796</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -78,6 +90,7 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Initial commit" />
     <MESSAGE value="Initial commit 2" />
-    <option name="LAST_COMMIT_MESSAGE" value="Initial commit 2" />
+    <MESSAGE value="Обновление проекта от орг" />
+    <option name="LAST_COMMIT_MESSAGE" value="Обновление проекта от орг" />
   </component>
 </project>

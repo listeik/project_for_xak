@@ -1,0 +1,11 @@
+.git
+.venv
+node_modules
+frontend/node_modules
+frontend/dist
+__pycache__
+.pytest_cache
+tmp
+*.log
+.env
+doc-1789744888

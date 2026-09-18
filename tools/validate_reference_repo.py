@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static integrity checks for the organizer reference repository.
+"""Static integrity checks for organizer inputs in the participant repository.
 
 This script validates the starter-kit artifacts only. It does not calculate or
 recommend a participant supply strategy.
@@ -8,7 +8,9 @@ recommend a participant supply strategy.
 from __future__ import annotations
 
 import csv
+import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -17,6 +19,15 @@ import yaml
 from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def project_files():
+    """Inspect project files, excluding generated dependencies and local caches."""
+    excluded = {".git", ".venv", "node_modules", "dist", "tmp", "__pycache__", ".pytest_cache", ".ruff_cache"}
+    for directory, subdirs, files in os.walk(ROOT):
+        subdirs[:] = [name for name in subdirs if name not in excluded and not name.endswith(".egg-info")]
+        for name in files:
+            yield Path(directory) / name
 
 
 def fail(message: str) -> None:
@@ -162,7 +173,7 @@ def check_validation_vectors() -> None:
 def check_relative_markdown_links() -> None:
     link_re = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
     problems: list[str] = []
-    for md in ROOT.rglob("*.md"):
+    for md in (p for p in project_files() if p.suffix.lower() == ".md"):
         text = md.read_text(encoding="utf-8")
         for target in link_re.findall(text):
             target = target.strip()
@@ -190,7 +201,7 @@ def check_no_ready_solution() -> None:
         fail("starter repo contains participant-solution artifacts: " + ", ".join(found))
 
     phrases = ["рекомендуем купить", "нужно выбрать lunar-isru", "лучший поставщик", "победная стратегия", "оптимальный объём earth-core", "инвестировать в 2036"]
-    for p in ROOT.rglob("*"):
+    for p in project_files():
         if not p.is_file() or p.suffix.lower() not in {".md", ".csv", ".yaml", ".yml", ".json"}:
             continue
         text = p.read_text(encoding="utf-8", errors="ignore").lower()
@@ -200,7 +211,11 @@ def check_no_ready_solution() -> None:
 
 
 def check_required_readme_content() -> None:
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    # The original repository tracks Readme.md; honour its case on Linux CI.
+    readme = ROOT / "Readme.md"
+    if not readme.exists():
+        readme = ROOT / "README.md"
+    text = readme.read_text(encoding="utf-8")
     required = ["Ключевой принцип", "CASE_INPUT", "TEAM_DECISION", "TEAM_ASSUMPTION", "I_end = I_start + Q_delivered - Losses - Q_served", "R_y = D_y * 45 / 365", "MANDATORY_STRESS", "55%", "75%", "90 + 270 = 360", "SL_critical >= 0.99", "SL_total >= 0.97", "GitHub"]
     missing = [x for x in required if x not in text]
     if missing:
@@ -210,7 +225,7 @@ def check_required_readme_content() -> None:
 def check_no_placeholders_or_secrets() -> None:
     secret_name_re = re.compile(r"(^|/)(\.env|id_rsa|id_ed25519|credentials?\.json)$", re.I)
     placeholder_re = re.compile(r"\b(TBD|TODO|FIXME)\b")
-    for p in ROOT.rglob("*"):
+    for p in project_files():
         if not p.is_file():
             continue
         rel = p.relative_to(ROOT).as_posix()
@@ -223,7 +238,12 @@ def check_no_placeholders_or_secrets() -> None:
 
 
 def main() -> int:
-    checks = [check_json_yaml_syntax, check_demand, check_sources, check_investments_and_constraints, check_mandatory_stress, check_schemas, check_validation_vectors, check_relative_markdown_links, check_no_ready_solution, check_required_readme_content, check_no_placeholders_or_secrets]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--starter", action="store_true", help="Also require an untouched organizer starter layout")
+    args = parser.parse_args()
+    checks = [check_json_yaml_syntax, check_demand, check_sources, check_investments_and_constraints, check_mandatory_stress, check_schemas, check_validation_vectors, check_relative_markdown_links, check_required_readme_content, check_no_placeholders_or_secrets]
+    if args.starter:
+        checks.append(check_no_ready_solution)
     for check in checks:
         check()
         print(f"PASS {check.__name__}")
