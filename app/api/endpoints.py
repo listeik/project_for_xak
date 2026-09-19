@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
 from app.core.balance_engine import calculate_plan, default_plan
-from app.core.constants import INPUT_VERSION, case_metadata
+from app.core.constants import INPUT_VERSION, MODEL_VERSION, case_metadata
 from app.schemas.plan import HealthResponse, PlanRequest
 
 router = APIRouter(prefix="/api/v1", tags=["Fuel planning"])
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/v1", tags=["Fuel planning"])
 
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    return HealthResponse(input_version=INPUT_VERSION, model_version="1.0-daily")
+    return HealthResponse(input_version=INPUT_VERSION, model_version=MODEL_VERSION)
 
 
 @router.get("/case")
@@ -61,7 +61,7 @@ def optimize(plan: PlanRequest) -> dict:
 def export_envelope(plan: dict, result: dict) -> dict:
     """Match the organiser export.schema.json and retain the complete engine result."""
     return {
-        "scenario_id": result["scenario"],
+        "scenario_id": result["scenario_id"],
         "plan_id": result["plan_id"],
         "units": result["units"],
         "assumptions_reference": {
@@ -83,6 +83,7 @@ def export_envelope(plan: dict, result: dict) -> dict:
             *result["violation_details"],
         ],
         "risk_register": [],
+        "warning_details": result["warning_details"],
         "risk_register_note": "Реестр FMEA не заполнен; вероятностная модель риска не выполнялась.",
         "plan": plan,
         "result": result,
@@ -112,13 +113,14 @@ def _xlsx_bytes(plan: dict, result: dict) -> bytes:
         "source_schedule": _flat_records(result["source_schedule"]),
         "inventory": _flat_records(result["inventory_trace"]),
         "violations": _flat_records(result["violation_details"]),
+        "warnings": _flat_records(result["warning_details"]),
         "assumptions": _flat_records(
             [{"parameter": key, "value": value} for key, value in result["assumptions"].items()]
         ),
         "plan": _flat_records([{"parameter": key, "value": value} for key, value in plan.items()]),
         "metadata": _flat_records(
             [
-                {"parameter": "scenario_id", "value": result["scenario"]},
+                {"parameter": "scenario_id", "value": result["scenario_id"]},
                 {"parameter": "plan_id", "value": result["plan_id"]},
                 {"parameter": "input_version", "value": result["input_version"]},
                 {"parameter": "model_version", "value": result["model_version"]},
@@ -147,7 +149,8 @@ def _xlsx_bytes(plan: dict, result: dict) -> bytes:
 
 def _csv_bytes(plan: dict, result: dict) -> bytes:
     metadata = {
-        "scenario_id": result["scenario"],
+        "scenario_id": result["scenario_id"],
+        "demand_profile": result["demand_profile"],
         "plan_id": result["plan_id"],
         "input_version": result["input_version"],
         "model_version": result["model_version"],
@@ -155,6 +158,7 @@ def _csv_bytes(plan: dict, result: dict) -> bytes:
         "money_unit": result["units"]["money"],
         "assumptions_json": json.dumps(result["assumptions"], ensure_ascii=False, allow_nan=False),
         "plan_json": json.dumps(plan, ensure_ascii=False, allow_nan=False),
+        "warnings_json": json.dumps(result["warning_details"], ensure_ascii=False, allow_nan=False),
     }
     frame = _flat_records([{**metadata, **row} for row in result["annual_balances"]])
     # Spreadsheet programs interpret these prefixes as executable formulae.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.constants import (
     DEFAULT_DISCOUNT_RATE,
@@ -48,6 +48,7 @@ class PlanRequest(StrictInput):
     yearly_reservations: dict[int, dict[SourceId, Quantity]] | None = None
     investments: InvestmentDecisions = Field(default_factory=InvestmentDecisions)
     scenario: Scenario = "BASE"
+    demand_profile: Literal["BASE", "LOW", "HIGH"] = "BASE"
     initial_inventory_t: Quantity = DEFAULT_INITIAL_INVENTORY
     discount_rate: Annotated[
         float, Field(strict=True, ge=0, le=1, allow_inf_nan=False)
@@ -76,6 +77,12 @@ class PlanRequest(StrictInput):
     price_factor: Annotated[
         float, Field(strict=True, ge=0, le=1000, allow_inf_nan=False)
     ] = 1.0
+
+    @model_validator(mode="after")
+    def separate_demand_research(self):
+        if self.scenario == "MANDATORY_STRESS" and self.demand_profile != "BASE":
+            raise ValueError("LOW/HIGH — отдельное исследование спроса; выберите режим BASE вместо MANDATORY_STRESS.")
+        return self
 
     @field_validator("plan_id")
     @classmethod

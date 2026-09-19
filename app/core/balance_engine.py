@@ -25,6 +25,7 @@ from app.core.constants import (
     INVESTMENTS,
     LAST_YEAR,
     MANDATORY_STRESS,
+    MODEL_VERSION,
     RESERVE_DAYS,
     SOURCE_IDS,
     SOURCES,
@@ -161,6 +162,13 @@ def source_availability(plan: dict, source_id: str, year: int) -> dict:
 def effective_year_data(plan: dict, year: int) -> dict:
     scenario = plan.get("scenario", "BASE")
     is_stress = scenario == "MANDATORY_STRESS"
+    demand_profile = plan.get("demand_profile", "BASE")
+    if is_stress and demand_profile != "BASE":
+        raise ValueError("LOW/HIGH demand research cannot be combined with MANDATORY_STRESS.")
+    demand_row = DEMAND[year]
+    profile_total = demand_row[f"{demand_profile.lower()}_total_t"]
+    # LOW/HIGH preserve the critical share of the corresponding BASE year.
+    profile_critical = demand_row["base_critical_t"] * profile_total / demand_row["base_total_t"]
     demand_multiplier = (
         _year_value(MANDATORY_STRESS["demand_multiplier"], year, 1.0) if is_stress else 1.0
     )
@@ -193,8 +201,8 @@ def effective_year_data(plan: dict, year: int) -> dict:
         )
     return {
         "year": year,
-        "demand_total": DEMAND[year]["base_total_t"] * demand_multiplier * research_demand,
-        "demand_critical": DEMAND[year]["base_critical_t"] * critical_multiplier * research_demand,
+        "demand_total": profile_total * demand_multiplier * research_demand,
+        "demand_critical": profile_critical * critical_multiplier * research_demand,
         "storage_capacity": storage["capacity_t"],
         "loss_rate": storage["loss_rate_on_throughput"],
         "holding_rate": storage["holding_cost_mln_per_t_year"],
@@ -332,7 +340,7 @@ def calculate_plan(plan: dict) -> dict:
     orders are NOT silently reduced: the provisional path is calculated and
     marked infeasible. Uncommissioned sources deliver nothing, with violations.
     """
-    annual, trace, schedules = [], [], []
+    annual, trace, schedules, warnings = [], [], [], []
     details = _investment_violations(plan)
     capex = capex_by_year(plan)
     details.extend(check_capex_limits(capex))
@@ -519,17 +527,41 @@ def calculate_plan(plan: dict) -> dict:
             )
         service = min(1.0, served / data["demand_total"]) if data["demand_total"] > 0 else 1.0
         critical_service = min(1.0, served_critical / data["demand_critical"]) if data["demand_critical"] > 0 else 1.0
+        shortage = max(0.0, data["demand_total"] - served)
+        service_below_target = service + EPSILON < CONSTRAINTS["BASE_TOTAL_SERVICE"]["value"]
+        critical_service_below_target = critical_service + EPSILON < CONSTRAINTS["BASE_CRITICAL_SERVICE"]["value"]
         if plan.get("scenario", "BASE") == "BASE":
-            if service + EPSILON < CONSTRAINTS["BASE_TOTAL_SERVICE"]["value"]:
+            if service_below_target:
                 violation(
                     f"SERVICE_LEVEL_VIOLATED_{year}", year, "Общий уровень обслуживания ниже минимума BASE.",
                     service, CONSTRAINTS["BASE_TOTAL_SERVICE"]["value"], unit="share",
                 )
-            if critical_service + EPSILON < CONSTRAINTS["BASE_CRITICAL_SERVICE"]["value"]:
+            if critical_service_below_target:
                 violation(
                     f"CRITICAL_SERVICE_LEVEL_VIOLATED_{year}", year, "Критический уровень обслуживания ниже минимума BASE.",
                     critical_service, CONSTRAINTS["BASE_CRITICAL_SERVICE"]["value"], unit="share",
                 )
+        else:
+            if shortage > EPSILON:
+                warnings.append({
+                    "code": f"STRESS_SHORTAGE_{year}", "year": year, "source": None,
+                    "actual": shortage, "limit": 0.0, "unit": "t",
+                    "message": f"В {year} дефицит {shortage:.3f} т; дней с дефицитом: {shortage_days}. "
+                    "Запаса и поставок недостаточно для полного обслуживания. "
+                    "Пересмотрите будущие заказы и резерв с учётом сроков доставки.",
+                    "first_date": first_shortage, "days": shortage_days,
+                })
+            for below, code, title, actual, target in (
+                (service_below_target, "SERVICE", "Общий сервис", service, CONSTRAINTS["BASE_TOTAL_SERVICE"]["value"]),
+                (critical_service_below_target, "CRITICAL_SERVICE", "Критический сервис", critical_service, CONSTRAINTS["BASE_CRITICAL_SERVICE"]["value"]),
+            ):
+                if below:
+                    warnings.append({
+                        "code": f"STRESS_{code}_BELOW_TARGET_{year}", "year": year, "source": None,
+                        "actual": actual, "limit": target, "unit": "share",
+                        "message": f"{title} {actual:.2%} ниже ориентира устойчивости {target:.0%}. "
+                        "В STRESS это предупреждение, а не жёсткое ограничение.",
+                    })
         procurement = sum(contract["procurement"] for contract in contracts.values())
         reservation = sum(contract["reservation"] for contract in contracts.values())
         isru_commission = commissioning_day(plan, "D")
@@ -549,13 +581,16 @@ def calculate_plan(plan: dict) -> dict:
                 "served_total": served,
                 "served_critical": served_critical,
                 "end_inventory": inventory,
-                "shortage": max(0.0, data["demand_total"] - served),
+                "shortage": shortage,
+                "has_shortage": shortage > EPSILON,
                 "critical_shortage": max(0.0, data["demand_critical"] - served_critical),
                 "demand_total": data["demand_total"],
                 "demand_critical": data["demand_critical"],
                 "reserve_required": reserve,
                 "service_level": service,
                 "critical_service_level": critical_service,
+                "service_below_target": service_below_target,
+                "critical_service_below_target": critical_service_below_target,
                 "storage_capacity": data["storage_capacity"],
                 "loss_rate": data["loss_rate"],
                 "zbo_active": data["zbo_active"],
@@ -598,11 +633,17 @@ def calculate_plan(plan: dict) -> dict:
         for source in SOURCE_IDS
     ] + [{"source": "HUB", "target": "DEMAND", "value": sum(row["served_total"] for row in annual)}]
     unique_codes = list(dict.fromkeys(item["code"] for item in details))
+    scenario = plan.get("scenario", "BASE")
+    demand_profile = plan.get("demand_profile", "BASE")
+    research_active = demand_profile != "BASE" or plan.get("demand_factor", 1.0) != 1.0 or plan.get("price_factor", 1.0) != 1.0
+    scenario_id = f"TEAM_{scenario}_{demand_profile}_SENSITIVITY" if research_active else scenario
     return {
         "plan_id": plan.get("plan_id", "untitled-plan"),
-        "scenario": plan.get("scenario", "BASE"),
+        "scenario": scenario,
+        "scenario_id": scenario_id,
+        "demand_profile": demand_profile,
         "input_version": INPUT_VERSION,
-        "model_version": "1.0-daily",
+        "model_version": MODEL_VERSION,
         "feasible": not unique_codes,
         "annual_balances": annual,
         "kpi_summary": {
@@ -618,10 +659,17 @@ def calculate_plan(plan: dict) -> dict:
             "total_shortage": sum(row["shortage"] for row in annual),
             "end_inventory": inventory,
             "violation_count": len(details),
+            "warning_count": len(warnings),
+            "has_shortage": any(row["has_shortage"] for row in annual),
+        },
+        "service_targets": {
+            "total": CONSTRAINTS["BASE_TOTAL_SERVICE"]["value"],
+            "critical": CONSTRAINTS["BASE_CRITICAL_SERVICE"]["value"],
         },
         "graph_data": {"nodes": nodes, "links": links},
         "violations": unique_codes,
         "violation_details": details,
+        "warning_details": warnings,
         "inventory_trace": trace,
         "source_schedule": schedules,
         "startup_stock": startup,
@@ -654,9 +702,11 @@ def calculate_plan(plan: dict) -> dict:
             "c_lead_months": plan.get("c_lead_months", SOURCES["C"]["lead_time_max_value"]),
             "d_lead_months": plan.get("d_lead_months", SOURCES["D"]["lead_time_max_value"]),
             "demand_factor": plan.get("demand_factor", 1.0),
+            "demand_input_profile": demand_profile,
+            "critical_demand_profile": "LOW/HIGH preserve the critical share of each BASE year",
             "price_factor": plan.get("price_factor", 1.0),
-            "research_factors_active": plan.get("demand_factor", 1.0) != 1.0 or plan.get("price_factor", 1.0) != 1.0,
-            "stress_service": "stress service is reported without inventing a new organiser threshold",
+            "research_factors_active": research_active,
+            "stress_service": "BASE service targets are resilience benchmarks; stress shortages and missed targets generate warnings, not hard violations",
         },
         "units": {"fuel": "t", "money": "million constant-price 2035 monetary units", "service": "share 0..1", "time_step": "model day"},
     }
@@ -681,6 +731,7 @@ def default_plan() -> dict:
         "yearly_reservations": None,
         "investments": {"zbo_year": 2036, "option_c_year": 2035, "exercise_c_year": 2035, "isru_funding_year": 2037},
         "scenario": "BASE",
+        "demand_profile": "BASE",
         "initial_inventory_t": DEFAULT_INITIAL_INVENTORY,
         "discount_rate": DEFAULT_DISCOUNT_RATE,
         "c_lead_months": SOURCES["C"]["lead_time_max_value"],

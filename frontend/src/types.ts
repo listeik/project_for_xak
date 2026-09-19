@@ -1,5 +1,6 @@
 export type SourceId = 'A' | 'B' | 'C' | 'D' | 'E';
 export type Scenario = 'BASE' | 'MANDATORY_STRESS';
+export type DemandProfile = 'BASE' | 'LOW' | 'HIGH';
 export type Orders = Record<SourceId, number>;
 export interface Investments {
   zbo_year: number | null;
@@ -13,6 +14,7 @@ export interface Plan {
   yearly_reservations: Record<string, Partial<Orders>> | null;
   investments: Investments;
   scenario: Scenario;
+  demand_profile: DemandProfile;
   initial_inventory_t: number;
   discount_rate: number;
   c_lead_months: number;
@@ -60,12 +62,15 @@ export interface AnnualBalance {
   served_critical: number;
   end_inventory: number;
   shortage: number;
+  has_shortage: boolean;
   critical_shortage: number;
   demand_total: number;
   demand_critical: number;
   reserve_required: number;
   service_level: number;
   critical_service_level: number;
+  service_below_target: boolean;
+  critical_service_below_target: boolean;
   storage_capacity: number;
   loss_rate: number;
   zbo_active: boolean;
@@ -102,6 +107,8 @@ export interface InventoryPoint {
 export interface Calculation {
   plan_id: string;
   scenario: Scenario;
+  scenario_id: string;
+  demand_profile: DemandProfile;
   input_version: string;
   model_version: string;
   feasible: boolean;
@@ -119,9 +126,13 @@ export interface Calculation {
     total_shortage: number;
     end_inventory: number;
     violation_count: number;
+    warning_count: number;
+    has_shortage: boolean;
   };
+  service_targets: { total: number; critical: number };
   violations: string[];
   violation_details: Violation[];
+  warning_details: Violation[];
   inventory_trace: InventoryPoint[];
   source_schedule: Array<SourceContract & { source_id: SourceId; source_name: string; year: number; kind: string; first_order_date: string | null; first_arrival_date: string | null }>;
   financial_breakdown: { annual: AnnualBalance[] };
@@ -134,6 +145,7 @@ export interface Optimization {
   savings: number;
   baseline_feasible: boolean;
   baseline_shortage_t: number;
+  baseline_has_shortage: boolean;
   elapsed_seconds: number;
   explanation: string;
 }

@@ -326,6 +326,7 @@ def optimize_supply_plan(plan: dict) -> dict:
             "savings": before_npv - engine_cost,
             "baseline_feasible": before["feasible"],
             "baseline_shortage_t": before["kpi_summary"]["total_shortage"],
+            "baseline_has_shortage": before["kpi_summary"]["has_shortage"],
             "elapsed_seconds": perf_counter() - started,
             "candidate_count": len(masks),
             "feasible_candidate_count": len(candidates),

@@ -1,6 +1,6 @@
 import { ChevronDown, FlaskConical, LoaderCircle, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { number, percent, sourceColors } from '../format';
-import type { AnnualBalance, CaseData, Investments, Plan, SourceId } from '../types';
+import type { AnnualBalance, CaseData, DemandProfile, Investments, Plan, SourceId } from '../types';
 
 function NumericInput({ value, onChange, label, min = 0, max, step = 0.1, className = '' }: {
   value: number; onChange: (value: number) => void; label: string; min?: number; max?: number; step?: number; className?: string;
@@ -31,9 +31,12 @@ export default function PlanController({ plan, caseData, year, row, updatePlan, 
     <div className="panel-heading"><div><p className="eyebrow"><SlidersHorizontal size={13} /> Решения оператора</p><h2>Управление планом <span className="text-cyan">{year}</span></h2></div></div>
     <div className="scenario-switch" role="group" aria-label="Сценарий расчёта">
       <button type="button" aria-pressed={plan.scenario === 'BASE'} className={plan.scenario === 'BASE' ? 'active' : ''} onClick={() => updatePlan({ ...plan, scenario: 'BASE' })}>BASE <span>Базовый</span></button>
-      <button type="button" aria-pressed={plan.scenario === 'MANDATORY_STRESS'} className={plan.scenario === 'MANDATORY_STRESS' ? 'active stress' : ''} onClick={() => updatePlan({ ...plan, scenario: 'MANDATORY_STRESS' })}><FlaskConical size={14} /> STRESS <span>Обязательный</span></button>
+      <button type="button" aria-pressed={plan.scenario === 'MANDATORY_STRESS'} className={plan.scenario === 'MANDATORY_STRESS' ? 'active stress' : ''} onClick={() => updatePlan({ ...plan, scenario: 'MANDATORY_STRESS', demand_profile: 'BASE' })}><FlaskConical size={14} /> STRESS <span>Обязательный</span></button>
     </div>
     {plan.scenario === 'MANDATORY_STRESS' && <p className="stress-description">С 2038: спрос +15%, потери ≤2%. В 2038–2039: A/B +25% к цене; поставки D — 55% / 75% плана.</p>}
+    <div className="demand-profile-control"><label htmlFor="demand-profile">Профиль спроса</label><select id="demand-profile" value={plan.demand_profile} disabled={plan.scenario === 'MANDATORY_STRESS'} onChange={(event) => updatePlan({ ...plan, demand_profile: event.target.value as DemandProfile })}>
+      <option value="BASE">BASE · базовый</option><option value="LOW">LOW · низкий</option><option value="HIGH">HIGH · высокий</option>
+    </select><p className="field-hint">{plan.scenario === 'MANDATORY_STRESS' ? 'STRESS использует базовый спрос со своим шоком. LOW/HIGH доступны отдельно в режиме BASE.' : plan.demand_profile === 'HIGH' ? 'HIGH: +10% в 2035–2037 и +25% в 2038–2040. Критическая доля каждого года сохраняется.' : plan.demand_profile === 'LOW' ? 'LOW: −20% во все годы. Критическая доля каждого года сохраняется.' : 'LOW/HIGH — отдельные исследования по исходным данным кейса.'}</p></div>
     <div className="control-section-heading"><h3>Годовые заказы</h3><span>тонн / {year}</span></div>
     <div className="source-controls">
       {caseData.sources.map((source) => <div className="source-control" key={source.source_id} style={{ '--source-color': sourceColors[source.source_id] } as React.CSSProperties}>
@@ -60,11 +63,11 @@ export default function PlanController({ plan, caseData, year, row, updatePlan, 
       <label>Lead time D, мес.<NumericInput label="Срок поставки D, месяцев" value={plan.d_lead_months} min={1} max={2} step={0.1} onChange={(value) => updatePlan({ ...plan, d_lead_months: value })} /></label>
       <label>Множитель спроса<NumericInput label="Исследовательский множитель спроса" value={plan.demand_factor} step={0.05} max={1000} onChange={(value) => updatePlan({ ...plan, demand_factor: value })} /></label>
       <label>Множитель цены<NumericInput label="Исследовательский множитель цены" value={plan.price_factor} step={0.05} max={1000} onChange={(value) => updatePlan({ ...plan, price_factor: value })} /></label>
-    </div><p className="field-hint">Множители, отличные от 1, включают исследование чувствительности.</p>
+    </div><p className="field-hint">Множитель спроса применяется дополнительно к выбранному профилю во все годы. Множители, отличные от 1, включают исследование чувствительности.</p>
       <h4>Явная бронь на {year}, т/год</h4><p className="field-hint">Пустое поле — автоматический расчёт брони. Ноль — явно нулевая бронь.</p>
       <div className="reservation-inputs">{caseData.sources.map((source) => <label key={source.source_id}>{source.source_id}<input className="number-input" type="number" min={0} step={0.1} placeholder="Авто" aria-label={`Бронь мощности ${source.name}, ${year}, тонн в год`} value={plan.yearly_reservations?.[year]?.[source.source_id] ?? ''} onChange={(event) => updateReservation(source.source_id, event.target.value)} /></label>)}</div>
     </details>
     <button type="button" className="button optimize-button" onClick={onOptimize} disabled={disabled || optimizing}>{optimizing ? <LoaderCircle size={17} className="spin" /> : <Sparkles size={17} />}{optimizing ? 'Подбираем заказы…' : 'Оптимизировать закупки'}</button>
-    <p className="optimize-caption">Минимум NPV при фиксированных инвестициях и 100% обслуживании. Оптимизация изменит заказы на все 6 лет.</p>
+    <p className="optimize-caption">Минимум NPV при фиксированных инвестициях и 100% обслуживании. Оптимизация изменит заказы на все 6 лет. Это планирование заранее; уже заключённые контракты не фиксируются.</p>
   </aside>;
 }
