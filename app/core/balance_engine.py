@@ -107,7 +107,8 @@ def lead_days(plan: dict, source_id: str) -> int:
     source = SOURCES[source_id]
     value = source["lead_time_max_value"]
     if source_id == "C":
-        value = plan.get("c_lead_months", value)
+        # Experts assign 18–24 months to commissioning, not each shipment.
+        value = plan.get("c_delivery_lead_months", 4.0)
     elif source_id == "D":
         value = plan.get("d_lead_months", value)
     conversion = DAYS_PER_WEEK if source["lead_time_unit"] == "week" else DAYS_PER_MONTH
@@ -123,7 +124,7 @@ def commissioning_day(plan: dict, source_id: str) -> int | None:
         exercise = _decision(plan, "exercise_c_year")
         if option is None or exercise is None or not FIRST_YEAR <= option <= exercise <= LAST_YEAR:
             return None
-        return _year_start(exercise) + lead_days(plan, source_id)
+        return _year_start(exercise) + math.ceil(float(plan.get("c_lead_months", source["lead_time_max_value"])) * DAYS_PER_MONTH)
     if source_id == "D":
         funding = _decision(plan, "isru_funding_year")
         earliest = int(source["available_from_year"])
@@ -136,8 +137,8 @@ def commissioning_day(plan: dict, source_id: str) -> int | None:
 def source_availability(plan: dict, source_id: str, year: int) -> dict:
     """Reusable affine schedule for simulation and the LP optimizer.
 
-    day_start/day_end are absolute model-day indices, end exclusive. C's
-    preparation is its first delivery lead; D has an additional post-commission
+    day_start/day_end are absolute model-day indices, end exclusive. C has
+    separate preparation and operational delivery leads; D has a post-commission
     transport lead. A/B/E can be ordered during the preparatory period.
     """
     SOURCES, _, _ = model_data(plan)
@@ -148,9 +149,16 @@ def source_availability(plan: dict, source_id: str, year: int) -> dict:
         first_delivery = None
     else:
         first_delivery = commission + (lead_days(plan, source_id) if source_id == "D" else 0)
+        if source_id == "C":
+            first_delivery=max(first_delivery,_year_start(_decision(plan,"exercise_c_year"))+lead_days(plan,"C"))
         start = min(year_end, max(year_start, first_delivery))
     scheduled_days = max(0, year_end - start)
     first_order_day = start - lead_days(plan, source_id)
+    if source_id == "C" and commission is not None:
+        # The first shipment may be booked during preparation, never before exercise.
+        first_order_day = max(first_order_day, _year_start(_decision(plan, "exercise_c_year")))
+        start = min(year_end, max(start, first_order_day + lead_days(plan, source_id)))
+        scheduled_days = max(0, year_end - start)
     effect = source_shock(plan, source_id, year)
     start = min(year_end, start + math.ceil(effect.get("delay_months", 0) * DAYS_PER_MONTH))
     active_days = max(0, year_end - start)
@@ -261,6 +269,14 @@ def source_contract(plan: dict, source_id: str, year: int) -> dict:
     total_order = order + startup
     reservations = _year_value(plan.get("yearly_reservations") or {}, year, {})
     explicit_reservation = source_id in reservations
+    lock = plan.get("contract_lock")
+    if lock and lock["policy"] == "preserve_commitments_allow_timed_topups":
+        # Capacity of the BASE framework contract survives rebooking and quantity cuts.
+        baseline = {**plan, "contract_lock":None, "additional_orders":{}, "research_shock":None,
+                    "yearly_orders":lock["baseline_orders"], "yearly_reservations":lock.get("baseline_reservations")}
+        booked = source_contract(baseline, source_id, year)["reserved_capacity_t_per_year"]
+        reservations = {source_id:booked}
+        explicit_reservation = True
     reserved_rate = (
         float(reservations[source_id])
         if explicit_reservation
@@ -290,6 +306,68 @@ def source_contract(plan: dict, source_id: str, year: int) -> dict:
             reserved_rate, source["reservation_rate_mln_per_t_year_capacity"], fraction
         ),
     }
+
+
+def topup_availability(plan: dict, source_id: str, year: int) -> dict:
+    """A new contract can only arrive after the decision date plus transport lead."""
+    regular = source_availability(plan, source_id, year)
+    lock = plan.get("contract_lock")
+    end = _year_start(year + 1)
+    enabled = lock and lock["policy"] == "preserve_commitments_allow_timed_topups" and year >= lock["shock_year"]
+    decision = _year_start(lock["shock_year"]) if enabled else end
+    earliest = max(_year_start(year), decision + regular["lead_days"], regular["first_order_day"] + regular["lead_days"])
+    if regular["commission_day"] is None or not enabled:
+        earliest = end
+    earliest = min(end, earliest)
+    scheduled = max(0, end - earliest)
+    delayed = min(end, earliest + math.ceil(source_shock(plan, source_id, year).get("delay_months", 0) * DAYS_PER_MONTH))
+    active = max(0, end - delayed)
+    return {**regular, "day_start": delayed, "scheduled_days": scheduled, "active_days": active,
+            "first_order_day": max(decision, earliest - regular["lead_days"]),
+            "period_fraction": scheduled / DAYS_PER_YEAR,
+            "timely_share": active / scheduled if scheduled else 0.0}
+
+
+def response_capacity_limit(plan: dict, source_id: str, year: int, booked_rate: float) -> float:
+    """Technical capacity is not automatically contractually available after a shock."""
+    source=model_data(plan)[0][source_id]
+    capacity=source["capacity_t_per_year"] * source_shock(plan,source_id,year).get("capacity_factor",1.0)
+    fraction=plan.get("new_capacity_fraction",1.0) if plan.get("response_capacity_policy","booked_only")=="conditional_market" else 0.0
+    return min(capacity,booked_rate + max(0.0,capacity-booked_rate)*fraction)
+
+
+def annual_contract(plan: dict, source_id: str, year: int) -> dict:
+    """Aggregate two delivery windows, reusing booked capacity and TOP payments once."""
+    regular = source_contract(plan, source_id, year)
+    extra = float(_year_value(plan.get("additional_orders", {}), year, {}).get(source_id, 0.0))
+    if extra <= 0:
+        return {**regular, "regular_ordered_t": regular["ordered_t"], "additional_ordered_t": 0.0,
+                "components": [regular], "peak_order_rate": regular["total_ordered_t"] / regular["period_fraction"] if regular["period_fraction"] else 0.0}
+    availability = topup_availability(plan, source_id, year)
+    sources, _, _ = model_data(plan)
+    source = sources[source_id]
+    fraction = availability["period_fraction"]
+    base_rate = regular["total_ordered_t"] / regular["period_fraction"] if regular["period_fraction"] else 0.0
+    extra_rate = extra / fraction if fraction else 0.0
+    new_rate = max(0.0, base_rate + extra_rate - regular["reserved_capacity_t_per_year"])
+    new_reserved = new_rate * fraction
+    total_reserved = regular["reserved_period_t"] + new_reserved
+    payment = take_or_pay(regular["total_ordered_t"] + extra, total_reserved, source["take_or_pay_share"], regular["price_per_t"])
+    share = effective_year_data(plan, year)["delivery_shares"][source_id] * availability["timely_share"]
+    topup = {**availability, "ordered_t":extra, "startup_ordered_t":0.0, "total_ordered_t":extra,
+             "delivered_t":extra * share, "delivery_share":share, "price_per_t":regular["price_per_t"],
+             "procurement":payment["variable_payment"] - regular["procurement"],
+             "reservation":new_reserved * source["reservation_rate_mln_per_t_year_capacity"],
+             "reserved_period_t":new_reserved, "reserved_capacity_t_per_year":new_rate,
+             "payable_volume_t":payment["payable_volume"] - regular["payable_volume_t"],
+             "reservation_explicit":False}
+    return {**regular, "ordered_t":regular["ordered_t"] + extra, "total_ordered_t":regular["total_ordered_t"] + extra,
+            "regular_ordered_t":regular["ordered_t"], "additional_ordered_t":extra,
+            "delivered_t":regular["delivered_t"] + topup["delivered_t"],
+            "reserved_capacity_t_per_year":regular["reserved_capacity_t_per_year"] + new_rate,
+            "reserved_period_t":total_reserved, "payable_volume_t":payment["payable_volume"],
+            "procurement":payment["variable_payment"], "reservation":regular["reservation"] + topup["reservation"],
+            "components":[regular, topup], "peak_order_rate":base_rate + extra_rate}
 
 
 def capex_by_year(plan: dict) -> dict[int, float]:
@@ -397,6 +475,10 @@ def calculate_plan(plan: dict) -> dict:
     SOURCES, _, YEARS = model_data(plan)
     SOURCE_IDS = tuple(SOURCES)
     annual, trace, schedules, warnings = [], [], [], []
+    if plan.get("contract_lock") and plan.get("response_capacity_policy")=="conditional_market":
+        warnings.append({"code":"NEW_CAPACITY_ASSUMED","year":plan["contract_lock"]["shock_year"],"source":None,
+                         "actual":plan.get("new_capacity_fraction",1.0),"limit":None,"unit":"share",
+                         "message":"Условный вариант: новые контракты считаются доступными в заданной доле свободной мощности. До подтверждения поставщиками восстановление не гарантировано."})
     details = _investment_violations(plan)
     capex = capex_by_year(plan)
     details.extend(check_capex_limits(capex))
@@ -456,7 +538,7 @@ def calculate_plan(plan: dict) -> dict:
 
     for year in YEARS:
         data = effective_year_data(plan, year)
-        contracts = {source: source_contract(plan, source, year) for source in SOURCE_IDS}
+        contracts = {source: annual_contract(plan, source, year) for source in SOURCE_IDS}
         reserve = reserve_requirement(data["demand_total"], plan.get("reserve_target_days", RESERVE_DAYS))
         start_inventory = inventory
         if start_inventory + EPSILON < reserve:
@@ -478,6 +560,23 @@ def calculate_plan(plan: dict) -> dict:
         for source_id, contract in contracts.items():
             source = SOURCES[source_id]
             capacity = source["capacity_t_per_year"]
+            effective_capacity = capacity * source_shock(plan, source_id, year).get("capacity_factor", 1.0)
+            lock=plan.get("contract_lock")
+            if lock and lock["policy"]=="preserve_commitments_allow_timed_topups" and year>=lock["shock_year"]:
+                booked=contract["components"][0]["reserved_capacity_t_per_year"]
+                available=response_capacity_limit(plan,source_id,year,booked)
+                if contract["peak_order_rate"]>available+EPSILON:
+                    violation(f"UNSECURED_CAPACITY_{source_id}_{year}",year,
+                              f"{source_id}: новый заказ превышает обеспеченную договором мощность и явно заданную доступность новых контрактов.",
+                              contract["peak_order_rate"],available,source_id,"t/year")
+            if contract["peak_order_rate"] > effective_capacity + EPSILON:
+                violation(f"DELIVERY_RATE_EXCEEDED_{source_id}_{year}", year,
+                          f"{source_id}: основные поставки и дозаказы совместно превышают доступный темп поставки.",
+                          contract["peak_order_rate"], effective_capacity, source_id, "t/year")
+            if contract["additional_ordered_t"] > EPSILON and not contract["components"][-1]["active_days"]:
+                violation(f"TOPUP_UNAVAILABLE_{source_id}_{year}", year,
+                          f"{source_id}: дозаказ не успевает прибыть после даты решения и lead time.",
+                          contract["additional_ordered_t"], 0.0, source_id, "t")
             if contract["reserved_capacity_t_per_year"] > capacity + EPSILON:
                 violation(
                     f"RESERVATION_CAPACITY_EXCEEDED_{source_id}_{year}", year,
@@ -512,18 +611,19 @@ def calculate_plan(plan: dict) -> dict:
             source_totals[source_id]["delivered_t"] += contract["delivered_t"] + contract["startup_ordered_t"]
             source_totals[source_id]["procurement"] += contract["procurement"]
             source_totals[source_id]["reservation"] += contract["reservation"]
-            active = bool(contract["active_days"])
-            schedules.append(
+            for component_index, component in enumerate(contract["components"]):
+                active = bool(component["active_days"])
+                schedules.append(
                 {
-                    **contract,
-                    "kind": "regular",
+                    **component,
+                    "kind": "additional" if component_index else "regular",
                     "source_name": source["name"],
-                    "commission_date": model_date(contract["commission_day"]) if contract["commission_day"] is not None else None,
-                    "first_order_date": model_date(contract["first_order_day"]) if contract["scheduled_days"] else None,
-                    "last_order_date": model_date(contract["day_end"] - 1 - contract["lead_days"]) if active else None,
-                    "first_arrival_date": model_date(contract["day_start"]) if active else None,
-                    "last_arrival_date": model_date(contract["day_end"] - 1) if active else None,
-                    "gross_daily_delivery_t": contract["delivered_t"] / contract["active_days"] if active else 0.0,
+                    "commission_date": model_date(component["commission_day"]) if component["commission_day"] is not None else None,
+                    "first_order_date": model_date(component["first_order_day"]) if component["scheduled_days"] else None,
+                    "last_order_date": model_date(component["day_end"] - 1 - component["lead_days"]) if active else None,
+                    "first_arrival_date": model_date(component["day_start"]) if active else None,
+                    "last_arrival_date": model_date(component["day_end"] - 1) if active else None,
+                    "gross_daily_delivery_t": component["delivered_t"] / component["active_days"] if active else 0.0,
                 }
             )
 
@@ -550,7 +650,7 @@ def calculate_plan(plan: dict) -> dict:
             absolute_day = first_day + day
             gross = sum(
                 contract["delivered_t"] / contract["active_days"]
-                for contract in contracts.values()
+                for combined in contracts.values() for contract in combined["components"]
                 if contract["active_days"] and absolute_day >= contract["day_start"]
             )
             daily_losses = throughput_losses(gross, data["loss_rate"])
@@ -702,6 +802,13 @@ def calculate_plan(plan: dict) -> dict:
     elif config:
         scenario_id = config["config_id"] + "_" + scenario_id
     total_served = sum(row["served_total"] for row in annual)
+    for limit_year, limit in ((2037, CONSTRAINTS["CAPEX_2037"]["value"]), (2040, CONSTRAINTS["CAPEX_2040"]["value"])):
+        used = sum(value for year, value in capex.items() if year <= limit_year)
+        remaining = limit - used
+        if 0 <= remaining < limit * 0.05:
+            warnings.append({"code":f"CAPEX_HEADROOM_LOW_{limit_year}", "year":limit_year, "source":None,
+                             "actual":remaining, "limit":limit * 0.05, "unit":"million 2035 units",
+                             "message":f"До {limit_year} осталось {remaining:g} млн инвестиционного бюджета. Запас менее 5% лимита; порог предупреждения выбран командой."})
     return {
         "plan_id": plan.get("plan_id", "untitled-plan"),
         "scenario": scenario,
@@ -728,6 +835,9 @@ def calculate_plan(plan: dict) -> dict:
             "capex_limit_2040": CONSTRAINTS["CAPEX_2040"]["value"],
             "horizon_capex_limit": config["future_capex_limit_mln"] if config and YEARS[-1] > 2040 else CONSTRAINTS["CAPEX_2040"]["value"],
             "total_shortage": sum(row["shortage"] for row in annual),
+            "total_critical_shortage": sum(row["critical_shortage"] for row in annual),
+            "reserve_deficit_t": sum(max(0.0, row["reserve_required"]-row["start_inventory"]) for row in annual),
+            "capex_headroom_2037": CONSTRAINTS["CAPEX_2037"]["value"] - sum(value for year,value in capex.items() if year<=2037),
             "end_inventory": inventory,
             "violation_count": len(details),
             "warning_count": len(warnings),
@@ -775,6 +885,12 @@ def calculate_plan(plan: dict) -> dict:
             "research_config": config,
             "research_shock": plan.get("research_shock"),
             "contract_lock_policy": (plan.get("contract_lock") or {}).get("policy"),
+            "topup_policy": "BASE framework capacity is committed before shock, including capacity implicit in baseline orders; paid in delivery year. Booked capacity and TOP persist after quantity cuts. New capacity requires an explicit conditional-market assumption; physical supply can still fail.",
+            "response_capacity_policy": plan.get("response_capacity_policy","booked_only"),
+            "new_capacity_fraction": plan.get("new_capacity_fraction",1.0),
+            "c_preparation_months": plan.get("c_lead_months",24.0),
+            "c_delivery_lead_months": plan.get("c_delivery_lead_months",4.0),
+            "c_delivery_lead_basis": "TEAM_ASSUMPTION: 4 months by default; experts specified commissioning lead only. First shipment may be ordered during preparation after option exercise. Sensitivity required.",
             "reserve_target_days": plan.get("reserve_target_days", RESERVE_DAYS),
             "cost_per_served_ton_formula": "(procurement + reservation + holding + fixed_opex + capex) / actual_served_t; no double counting; all undiscounted",
             "discounted_cost_per_served_ton_formula": "NPV(all_costs) / actual_served_t; discounted cost per physical ton, not LCOF",

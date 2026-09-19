@@ -1,4 +1,4 @@
-import type { Calculation, CaseData, OptimizedResponse, Plan } from './types';
+import type { Calculation, CaseData, OptimizedResponse, Plan, AdaptedResponse } from './types';
 
 const origin = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 const base = `${origin}/api/v1`;
@@ -43,6 +43,8 @@ export const calculate = (plan: unknown, signal?: AbortSignal) => request<Calcul
 export const optimize = (plan: Plan, signal?: AbortSignal) => request<OptimizedResponse>('/optimize', signal, plan);
 export const extensionDemo = (plan: Plan, signal?: AbortSignal) => request<{plan:Plan;result:Calculation;case_data:CaseData}>('/extension-demo',signal,plan);
 export const analyticalReport = <T>(plan:Plan,signal?:AbortSignal) => request<T>('/analytics/report',signal,plan);
+export const stressReport = <T>(plan:Plan,signal?:AbortSignal) => request<T>('/analytics/stress',signal,plan);
+export const adapt = (plan:Plan,signal?:AbortSignal) => request<AdaptedResponse>('/adapt',signal,plan);
 
 export async function exportContest(plan: Plan,format:'json'|'csv') {
   let response: Response;

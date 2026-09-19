@@ -98,5 +98,6 @@ class ContractLock(ResearchInput):
     baseline_investments: dict[str, int | None]
     baseline_initial_inventory_t: Nonnegative
     baseline_c_lead_months: Nonnegative
+    baseline_c_delivery_lead_months: Nonnegative = 4.0
     baseline_d_lead_months: Nonnegative
-    policy: Literal["freeze_annual_contract_if_first_order_precedes_shock"] = "freeze_annual_contract_if_first_order_precedes_shock"
+    policy: Literal["freeze_annual_contract_if_first_order_precedes_shock", "preserve_commitments_allow_timed_topups"] = "freeze_annual_contract_if_first_order_precedes_shock"

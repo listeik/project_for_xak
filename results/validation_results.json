@@ -1,5 +1,5 @@
 {
-  "model_version": "2.0-analytics",
+  "model_version": "2.2-evidence",
   "tolerance": "absolute 1e-7; relative 1e-9",
   "rows": [
     {
@@ -386,6 +386,313 @@
       },
       "actual": {
         "shortage_warnings": 3
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E16",
+      "inputs": {
+        "decision": "2038-01-01",
+        "B_lead_months": 4,
+        "E_lead_weeks": 6
+      },
+      "expected": {
+        "B_first": "2038-05-03",
+        "B_days": 243,
+        "E_first": "2038-02-12",
+        "E_days": 323
+      },
+      "actual": {
+        "B_first": "2038-05-03",
+        "B_days": 243,
+        "E_first": "2038-02-12",
+        "E_days": 323
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E17",
+      "inputs": {
+        "plan": "STRESS, advance B reservation 110 t/year from 2038",
+        "baseline_B2038": 0
+      },
+      "expected": {
+        "full_recovery": true,
+        "B_topup_positive": true,
+        "critical_shortage": 0.0,
+        "total_shortage": 0.0
+      },
+      "actual": {
+        "full_recovery": true,
+        "B_topup_positive": true,
+        "critical_shortage": 1.9184653865522705e-12,
+        "total_shortage": 1.8189894035458565e-12
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E18",
+      "inputs": {
+        "decision": "2038-01-01",
+        "policy": "preserve commitments"
+      },
+      "expected": {
+        "commitments_unchanged": true,
+        "historical_stock_unchanged": true
+      },
+      "actual": {
+        "commitments_unchanged": true,
+        "historical_stock_unchanged": true
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E19",
+      "inputs": {
+        "B_topup_t": 74,
+        "B_window_days": 243,
+        "capacity_t_per_year": 110
+      },
+      "expected": {
+        "rate_violation": true
+      },
+      "actual": {
+        "rate_violation": true
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E20",
+      "inputs": {
+        "A_order": 50,
+        "A_topup": 10,
+        "paid_annual_capacity": 100,
+        "TOP": 0.7
+      },
+      "expected": {
+        "payable_t": 70.0,
+        "new_reservation_mln": 0.0,
+        "incremental_procurement_mln": 0.0
+      },
+      "actual": {
+        "payable_t": 70.0,
+        "new_reservation_mln": 0.0,
+        "incremental_procurement_mln": 0.0
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E21",
+      "inputs": {
+        "demand_factor_from_2038": 2,
+        "B_delivery_from_2038": 0
+      },
+      "expected": {
+        "full_recovery": false,
+        "avoided_shortage_positive": true,
+        "residual_critical_positive": true,
+        "reserve_violation_visible": true,
+        "E_years": [
+          2039,
+          2040
+        ]
+      },
+      "actual": {
+        "full_recovery": false,
+        "avoided_shortage_positive": true,
+        "residual_critical_positive": true,
+        "reserve_violation_visible": true,
+        "E_years": [
+          2039,
+          2040
+        ]
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E22",
+      "inputs": {
+        "E_topup_each_year_2038_2040": 1
+      },
+      "expected": {
+        "streak_rejected": true
+      },
+      "actual": {
+        "streak_rejected": true
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E23",
+      "inputs": {
+        "plan": "adapted default",
+        "discount_rate": 0.08
+      },
+      "expected": {
+        "daily_material_residual": 0.0,
+        "npv_matches_annual_cash": true,
+        "component_procurement_matches": true
+      },
+      "actual": {
+        "daily_material_residual": 4.284572696633404e-12,
+        "npv_matches_annual_cash": true,
+        "component_procurement_matches": true
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E24",
+      "inputs": {
+        "topups": [
+          "negative",
+          "before decision"
+        ]
+      },
+      "expected": {
+        "schema_rejections": [
+          true,
+          true
+        ]
+      },
+      "actual": {
+        "schema_rejections": [
+          true,
+          true
+        ]
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E25",
+      "inputs": {
+        "C_topup_in_shock_year": 1.0,
+        "C_preparation_months": 24,
+        "exercise_year": 2037
+      },
+      "expected": {
+        "unavailable_topup_flagged": true,
+        "additional_delivered": 0.0
+      },
+      "actual": {
+        "unavailable_topup_flagged": true,
+        "additional_delivered": 0.0
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E26",
+      "inputs": {
+        "CAPEX_through_2037": 1790,
+        "limit": 1800
+      },
+      "expected": {
+        "headroom_mln": 10.0,
+        "warning": true
+      },
+      "actual": {
+        "headroom_mln": 10.0,
+        "warning": true
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E27",
+      "inputs": {
+        "B_booking": 0,
+        "B_topup": 1,
+        "policy": "booked_only"
+      },
+      "expected": {
+        "unsecured_flag": true
+      },
+      "actual": {
+        "unsecured_flag": true
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E28",
+      "inputs": {
+        "B_topup": 1,
+        "policy": "conditional_market",
+        "new_fraction": 1
+      },
+      "expected": {
+        "unsecured_flag": false
+      },
+      "actual": {
+        "unsecured_flag": false
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E29",
+      "inputs": {
+        "C_exercise": 2035,
+        "preparation_months": 24,
+        "delivery_months": 4
+      },
+      "expected": {
+        "commission": "2037-01-01",
+        "topup_first": "2038-05-03"
+      },
+      "actual": {
+        "commission": "2037-01-01",
+        "topup_first": "2038-05-03"
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E30",
+      "inputs": {
+        "common_earth_delivery": 0.5,
+        "year": 2038,
+        "D_independent": true
+      },
+      "expected": {
+        "A_delivered": 95.0,
+        "D_delivered": 80.0,
+        "scenario": "BASE"
+      },
+      "actual": {
+        "A_delivered": 95.0,
+        "D_delivered": 80.0,
+        "scenario": "BASE"
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E31",
+      "inputs": {
+        "plan": "default STRESS",
+        "no_extra_booking": true
+      },
+      "expected": {
+        "full_recovery": false,
+        "shortage_t": 147.828,
+        "no_new_capacity": true
+      },
+      "actual": {
+        "full_recovery": false,
+        "shortage_t": 147.82799999999838,
+        "no_new_capacity": true
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E32",
+      "inputs": {
+        "A_rebooked": 40,
+        "original_capacity": 100,
+        "TOP": 0.7
+      },
+      "expected": {
+        "reserved_rate": 100.0,
+        "payable_t": 70.0
+      },
+      "actual": {
+        "reserved_rate": 100.0,
+        "payable_t": 70.0
       },
       "status": "PASSED"
     }

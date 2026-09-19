@@ -45,6 +45,7 @@
     }
   },
   "yearly_reservations": null,
+  "additional_orders": {},
   "investments": {
     "zbo_year": 2036,
     "option_c_year": 2035,
@@ -56,6 +57,9 @@
   "research_config": null,
   "research_shock": null,
   "contract_lock": null,
+  "response_capacity_policy": "booked_only",
+  "new_capacity_fraction": 1.0,
+  "c_delivery_lead_months": 4.0,
   "reserve_target_days": 60.0,
   "initial_inventory_t": 16.438356164383563,
   "discount_rate": 0.08,

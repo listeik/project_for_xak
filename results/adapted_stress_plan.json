@@ -1,15 +1,15 @@
 {
-  "plan_id": "TEAM_EARTH_PREPARED",
+  "plan_id": "hybrid-starting-proposal",
   "yearly_orders": {
     "2035": {
-      "A": 112.4578641612278,
+      "A": 110.0,
       "B": 0.0,
       "C": 0.0,
       "D": 0.0,
       "E": 0.0
     },
     "2036": {
-      "A": 151.0592867838697,
+      "A": 150.0,
       "B": 0.0,
       "C": 0.0,
       "D": 0.0,
@@ -18,53 +18,39 @@
     "2037": {
       "A": 190.0,
       "B": 0.0,
-      "C": 13.538350618375588,
+      "C": 10.0,
       "D": 0.0,
       "E": 0.0
     },
     "2038": {
       "A": 190.0,
       "B": 0.0,
-      "C": 93.12794631468002,
-      "D": 0.0,
+      "C": 0.0,
+      "D": 80.0,
       "E": 0.0
     },
     "2039": {
       "A": 190.0,
-      "B": 62.51483556097784,
-      "C": 130.0,
-      "D": 0.0,
+      "B": 0.0,
+      "C": 30.0,
+      "D": 110.0,
       "E": 0.0
     },
     "2040": {
       "A": 190.0,
-      "B": 77.98125450612822,
-      "C": 130.0,
-      "D": 0.0,
+      "B": 0.0,
+      "C": 90.0,
+      "D": 115.0,
       "E": 0.0
     }
   },
-  "yearly_reservations": {
-    "2038": {
-      "B": 110.0
-    },
-    "2039": {
-      "B": 110.0
-    },
-    "2040": {
-      "B": 110.0
-    }
-  },
-  "additional_orders": {
-    "2038": {
-      "B": 6.990460872945904
-    }
-  },
+  "yearly_reservations": null,
+  "additional_orders": {},
   "investments": {
     "zbo_year": 2036,
     "option_c_year": 2035,
     "exercise_c_year": 2035,
-    "isru_funding_year": null
+    "isru_funding_year": 2037
   },
   "scenario": "MANDATORY_STRESS",
   "demand_profile": "BASE",
@@ -74,14 +60,14 @@
     "shock_year": 2038,
     "baseline_orders": {
       "2035": {
-        "A": 112.4578641612278,
+        "A": 110.0,
         "B": 0.0,
         "C": 0.0,
         "D": 0.0,
         "E": 0.0
       },
       "2036": {
-        "A": 151.0592867838697,
+        "A": 150.0,
         "B": 0.0,
         "C": 0.0,
         "D": 0.0,
@@ -90,50 +76,40 @@
       "2037": {
         "A": 190.0,
         "B": 0.0,
-        "C": 13.538350618375588,
+        "C": 10.0,
         "D": 0.0,
         "E": 0.0
       },
       "2038": {
         "A": 190.0,
         "B": 0.0,
-        "C": 93.12794631468002,
-        "D": 0.0,
+        "C": 0.0,
+        "D": 80.0,
         "E": 0.0
       },
       "2039": {
         "A": 190.0,
         "B": 0.0,
-        "C": 130.0,
-        "D": 0.0,
+        "C": 30.0,
+        "D": 110.0,
         "E": 0.0
       },
       "2040": {
         "A": 190.0,
-        "B": 1.7375630857680444,
-        "C": 130.0,
-        "D": 0.0,
+        "B": 0.0,
+        "C": 90.0,
+        "D": 115.0,
         "E": 0.0
       }
     },
-    "baseline_reservations": {
-      "2038": {
-        "B": 110.0
-      },
-      "2039": {
-        "B": 110.0
-      },
-      "2040": {
-        "B": 110.0
-      }
-    },
+    "baseline_reservations": null,
     "baseline_investments": {
       "zbo_year": 2036,
       "option_c_year": 2035,
       "exercise_c_year": 2035,
-      "isru_funding_year": null
+      "isru_funding_year": 2037
     },
-    "baseline_initial_inventory_t": 18.493150684931507,
+    "baseline_initial_inventory_t": 15.0,
     "baseline_c_lead_months": 24.0,
     "baseline_c_delivery_lead_months": 4.0,
     "baseline_d_lead_months": 2.0,
@@ -143,7 +119,7 @@
   "new_capacity_fraction": 1.0,
   "c_delivery_lead_months": 4.0,
   "reserve_target_days": 45.0,
-  "initial_inventory_t": 18.493150684931507,
+  "initial_inventory_t": 15.0,
   "discount_rate": 0.08,
   "c_lead_months": 24.0,
   "d_lead_months": 2.0,

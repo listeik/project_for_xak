@@ -12,12 +12,16 @@ export interface Plan {
   plan_id: string;
   yearly_orders: Record<string, Orders>;
   yearly_reservations: Record<string, Partial<Orders>> | null;
+  additional_orders: Record<string, Partial<Orders>>;
   investments: Investments;
   scenario: Scenario;
   demand_profile: DemandProfile;
   initial_inventory_t: number;
   discount_rate: number;
   c_lead_months: number;
+  c_delivery_lead_months: number;
+  response_capacity_policy: 'booked_only'|'conditional_market';
+  new_capacity_fraction: number;
   d_lead_months: number;
   demand_factor: number;
   price_factor: number;
@@ -132,6 +136,9 @@ export interface Calculation {
     capex_limit_2037: number;
     capex_limit_2040: number;
     total_shortage: number;
+    total_critical_shortage: number;
+    reserve_deficit_t: number;
+    capex_headroom_2037: number;
     end_inventory: number;
     violation_count: number;
     warning_count: number;
@@ -158,4 +165,6 @@ export interface Optimization {
   explanation: string;
 }
 export interface OptimizedResponse { plan: Plan; result: Calculation; optimization: Optimization }
+export interface ResponseAction {kind:'additional'|'future_rebooking'; year:number;source:string;ordered_t:number;delivered_t:number;before_t?:number;first_order_date:string;first_arrival_date:string;procurement_mln?:number;reservation_mln?:number}
+export interface AdaptedResponse {plan:Plan;result:Calculation;actions:ResponseAction[];optimization:{additional_npv_mln:number;avoided_shortage_t:number;full_recovery:boolean;explanation:string}}
 export interface Snapshot { plan: Plan; result: Calculation }

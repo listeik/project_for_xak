@@ -30,7 +30,7 @@ def compact(result: dict) -> dict:
 def standard_environment(plan: dict) -> dict:
     result = deepcopy(plan)
     result.update(scenario="BASE", demand_profile="BASE", demand_factor=1.0, price_factor=1.0,
-                  research_shock=None, contract_lock=None)
+                  research_shock=None, contract_lock=None, additional_orders={}, response_capacity_policy="booked_only")
     return result
 
 
@@ -75,45 +75,91 @@ def compare_strategies(strategies_list: list[dict], scenario: str = "BASE") -> d
             "selection_rule":"Minimum NPV among these templates with 100% service and all constraints; not global optimization over investments."}
 
 
+def common_earth_shock(plan: dict) -> dict:
+    """Team severity scenario; common infrastructure can affect all Earth suppliers."""
+    return validated({**deepcopy(plan), "scenario":"BASE", "demand_profile":"BASE",
+        "research_shock":{"scenario_id":"TEAM_EARTH_COMMON_CAUSE", "description":"TEAM_ASSUMPTION: shared Earth infrastructure reduces A/B/C/E deliveries to 50% in 2038–2039. C shares the corridor by explicit assumption. Not a forecast or probability; separate from mandatory stress.",
+            "start_year":2038,"end_year":2039,"demand_factor":1.0,
+            "sources":{s:{"delivery_factor":0.5} for s in ("A","B","C","E")},"combination_rule":"standalone"}})
+
+
 def comparison_bundle(plan: dict) -> dict:
+    from app.core.response_optimizer import optimize_response
     templates = strategy_templates(plan)
     base, stress = compare_strategies(templates,"BASE"), compare_strategies(templates,"MANDATORY_STRESS")
     naive = next((row for row in base["rows"] if row["strategy_id"]==base["lowest_cost_feasible_strategy"]),None)
-    candidates = []
-    for row in stress["rows"]:
+    prepared=[]
+    preparation_errors=[]
+    for template in templates:
+        buffered=deepcopy(template["plan"])
+        buffered["response_capacity_policy"]="booked_only"
+        buffered["reserve_target_days"]=min(90.0,buffered["reserve_target_days"]*1.5)
+        buffered["initial_inventory_t"]=max(buffered["initial_inventory_t"],100*buffered["reserve_target_days"]/365)
+        reservations=deepcopy(buffered.get("yearly_reservations") or {})
+        for y in model_data(buffered)[2]:
+            if y>=2038:
+                reservations.setdefault(y,{})["B"]=model_data(buffered)[0]["B"]["capacity_t_per_year"]
+        buffered["yearly_reservations"]=reservations
+        try:
+            prepared_plan=optimize_supply_plan(validated(buffered))["plan"]
+        except OptimizationError as exc:
+            preparation_errors.append({"strategy_id":template["strategy_id"],"message":str(exc)})
+            continue
+        # Buffer is a procurement decision; reserve obligations themselves are unchanged.
+        prepared_plan["reserve_target_days"]=template["plan"]["reserve_target_days"]
+        prepared_plan["plan_id"]+="_PREPARED"
+        prepared.append({**template,"strategy_id":template["strategy_id"]+"_prepared",
+            "name":template["name"]+" + подготовка", "plan":prepared_plan,
+            "description":template["description"]+"; физический буфер +50%, предварительная бронь B 110 т/год с 2038",
+            "kpi":summary(calculate_plan(prepared_plan)),"optimization_error":None})
+    assessments=[]
+    for row in [*base["rows"],*prepared]:
         if row["optimization_error"]:
             continue
-        # Same pre-shock contracts; later contracts may depend on the observed scenario.
-        # Reusing every stress order in BASE would overfill storage, not prove resilience.
-        try:
-            base_optimized = optimize_supply_plan(with_contract_lock({**row["plan"],"scenario":"BASE"}))
-        except OptimizationError:
-            continue
-        base_result = base_optimized["result"]
-        if base_result["feasible"] and not base_result["kpi_summary"]["has_shortage"]:
-            candidates.append((base_result["kpi_summary"]["npv"],row,base_result,base_optimized["plan"]))
-    resilience = {"status":"no_common_feasible_candidate", "note":"No price of resilience asserted without two comparable feasible BASE plans."}
-    if naive and candidates:
-        _, resilient, resilient_base, resilient_base_plan = min(candidates,key=lambda item:item[0])
-        resilient_stress_plan = validated({
-            **with_contract_lock(resilient_base_plan),
-            "scenario":"MANDATORY_STRESS",
-            "yearly_orders":deepcopy(resilient["plan"]["yearly_orders"]),
-        })
-        naive_stress = calculate_plan({**naive["plan"],"scenario":"MANDATORY_STRESS"})
-        resilience = {
-            "status":"calculated", "naive_strategy":naive["strategy_id"],"resilient_strategy":resilient["strategy_id"],
-            "price_of_resilience_mln":resilient_base["kpi_summary"]["npv"]-naive["kpi"]["npv"],
-            "avoided_shortage_t":naive_stress["kpi_summary"]["total_shortage"]-resilient["kpi"]["total_shortage"],
-            "naive_stress_shortage_t":naive_stress["kpi_summary"]["total_shortage"],
-            "resilient_stress_shortage_t":resilient["kpi"]["total_shortage"],
-            "naive_base_npv":naive["kpi"]["npv"], "resilient_base_npv":resilient_base["kpi_summary"]["npv"],
-            "avoided_mission_loss_money":None,
-            "resilient_base_plan":resilient_base_plan,"resilient_stress_plan":resilient_stress_plan,
-            "note":"Contingent policy: identical pre-2038 annual commitments, later orders may differ with sufficient lead time. Extra NPV measured in BASE; avoided shortage in mandatory stress. Cheapest of constructed pairs, not globally optimal robust policy. Mission-loss prices unavailable.",
-        }
+        evaluated={"strategy_id":row["strategy_id"],"name":row["name"],"description":row["description"],"plan":row["plan"],"base":row["kpi"]}
+        for label,candidate in (("mandatory",{**row["plan"],"scenario":"MANDATORY_STRESS"}),
+                                ("common_earth",common_earth_shock(row["plan"]))):
+            before=calculate_plan(candidate)
+            try:
+                response=optimize_response(candidate)
+                evaluated[label]={"before":summary(before),"after":summary(response["result"]),
+                    "plan":response["plan"],"actions":response["actions"],"full_recovery":response["optimization"]["full_recovery"],"error":None}
+            except OptimizationError as exc:
+                evaluated[label]={"before":summary(before),"after":None,"plan":None,"actions":[],"full_recovery":False,"error":str(exc)}
+        assessments.append(evaluated)
+    eligible=[r for r in assessments if r["base"]["feasible"] and r["mandatory"]["full_recovery"]]
+    resilience={"status":"no_common_feasible_candidate","note":"No verified booked-capacity candidate passes BASE and mandatory stress."}
+    recommendation={"status":"unavailable","message":"Нет подтверждённых кандидатов, проходящих BASE и обязательный STRESS."}
+    if naive and eligible:
+        economical=min(eligible,key=lambda r:r["base"]["npv"])
+        verified=calculate_plan(economical["mandatory"]["plan"])
+        naive_stress=calculate_plan({**naive["plan"],"scenario":"MANDATORY_STRESS"})
+        resilience={"status":"calculated","naive_strategy":naive["strategy_id"],"resilient_strategy":economical["strategy_id"],
+            "price_of_resilience_mln":economical["base"]["npv"]-naive["kpi"]["npv"],
+            "avoided_shortage_t":naive_stress["kpi_summary"]["total_shortage"]-verified["kpi_summary"]["total_shortage"],
+            "naive_stress_shortage_t":naive_stress["kpi_summary"]["total_shortage"],"resilient_stress_shortage_t":verified["kpi_summary"]["total_shortage"],
+            "naive_base_npv":naive["kpi"]["npv"],"resilient_base_npv":economical["base"]["npv"],
+            "resilient_stress_npv":verified["kpi_summary"]["npv"],"resilient_stress_result":compact(verified),
+            "resilient_base_plan":economical["plan"],"resilient_stress_plan":economical["mandatory"]["plan"],"avoided_mission_loss_money":None,
+            "note":"Cheapest verified BASE among three nominal templates and three prepared variants (50% inventory buffer plus advance B reservation). Recourse uses booked capacity only. Costs of reaction remain additional. Not globally optimal."}
+        comparable=[r for r in eligible if r["common_earth"]["after"] is not None]
+        if comparable:
+            # Rounded microton noise must not overturn the declared economic tie-break.
+            chosen=min(comparable,key=lambda r:(round(r["common_earth"]["after"]["total_critical_shortage"],5),round(r["common_earth"]["after"]["total_shortage"],5),r["base"]["npv"]))
+            cost_reference=min(comparable,key=lambda r:r["base"]["npv"])
+            recommendation={"status":"calculated","strategy_id":chosen["strategy_id"],"name":chosen["name"],"plan":chosen["plan"],
+                "cost_reference_name":cost_reference["name"],"premium_base_mln":chosen["base"]["npv"]-cost_reference["base"]["npv"],
+                "avoided_common_shortage_t":cost_reference["common_earth"]["after"]["total_shortage"]-chosen["common_earth"]["after"]["total_shortage"],
+                "avoided_common_critical_t":cost_reference["common_earth"]["after"]["total_critical_shortage"]-chosen["common_earth"]["after"]["total_critical_shortage"],
+                "base":chosen["base"],"mandatory":chosen["mandatory"]["after"],"common_earth":chosen["common_earth"]["after"],
+                "rule":"Сначала выполнение BASE и полное восстановление в обязательном STRESS. Затем минимум критического дефицита при общем земном сбое, общего дефицита и NPV BASE. Это приоритет команды, а не критерий организаторов.",
+                "limits":"Рекомендация условна для снижения A/B/C/E до 50% в 2038–2039, доступности D и заранее заключённых контрактов. Вероятности и денежная цена срыва миссий не заданы. Остаточный риск и нарушения резерва сохраняются. Среди проверенных шаблонов, не глобальный оптимум.",
+                "unverified_candidates":[r["strategy_id"] for r in eligible if r["common_earth"]["after"] is None]}
     return {"base":base,"stress":stress,"resilience":resilience,
-            "environment_note":"Standard BASE demand and unit price factors; research modifiers of the chosen plan are reset explicitly for a comparable organiser experiment. Configuration, discount and explicit reservations are retained."}
+        "decision_case":{"rows":assessments,"recommendation":recommendation,"preparation_errors":preparation_errors,
+            "common_earth_scenario":common_earth_shock(templates[0]["plan"])["research_shock"],
+            "preparation":"Дополнительная подготовка меняет контракты: B 110 т/год резервируется заранее с 2038, оплачивается даже при отсутствии поставок. Буфер физического запаса +50%; норматив резерва не изменяется."},
+        "environment_note":"Standard organiser demand and prices; research modifiers reset. Conservative booked-only recourse. Nominal templates retain input reservations; prepared candidates explicitly add B reservation. All common-Earth scenario severities are team assumptions."}
 
 
 def with_contract_lock(plan: dict, shock_year: int = 2038) -> dict:
@@ -124,27 +170,67 @@ def with_contract_lock(plan: dict, shock_year: int = 2038) -> dict:
         "baseline_investments":deepcopy(plan["investments"]),
         "baseline_initial_inventory_t":plan["initial_inventory_t"],
         "baseline_c_lead_months":plan["c_lead_months"],"baseline_d_lead_months":plan["d_lead_months"],
+        "baseline_c_delivery_lead_months":plan.get("c_delivery_lead_months",4.0),
         "policy":"freeze_annual_contract_if_first_order_precedes_shock",
     }
     return validated(result)
 
 
 def stress_impact(plan: dict) -> dict:
+    from app.core.response_optimizer import response_plan, optimize_response
     baseline = standard_environment(plan)
+    if (plan.get("contract_lock") or {}).get("policy") == "preserve_commitments_allow_timed_topups":
+        baseline["yearly_orders"] = deepcopy(plan["contract_lock"]["baseline_orders"])
     base = calculate_plan(baseline)
-    stressed = {**with_contract_lock(baseline),"scenario":"MANDATORY_STRESS"}
+    stressed = {**response_plan(baseline),"scenario":"MANDATORY_STRESS"}
     stress = calculate_plan(stressed)
     adapted, error = None, None
     try:
-        adapted = optimize_supply_plan(stressed)
+        adapted = optimize_response(stressed)
     except OptimizationError as exc:
         error = {"message":str(exc),"details":exc.details}
+    conditional,conditional_error=None,None
+    try:
+        conditional=optimize_response({**stressed,"response_capacity_policy":"conditional_market"})
+    except OptimizationError as exc:
+        conditional_error={"message":str(exc),"details":exc.details}
     return {"base":base,"stress":stress,"base_plan":baseline,"stress_plan":stressed,
             "delta_npv_mln":stress["kpi_summary"]["npv"]-base["kpi_summary"]["npv"],
             "delta_shortage_t":stress["kpi_summary"]["total_shortage"]-base["kpi_summary"]["total_shortage"],
             "locked_contracts":[{"year":y,"source":s,"ordered_t":q} for (y,s),q in locked_contracts(stressed).items()],
             "adaptation":adapted,"adaptation_error":error,
-            "note":"Whole annual contract frozen if its earliest order predates 2038. Investments and reservations stay fixed. This conservative rule may reject recovery possible with finer intra-year contracts; no perfect-foresight rebooking is claimed."}
+            "conditional_adaptation":conditional,"conditional_adaptation_error":conditional_error,
+            "note":"Original annual commitments retained if first order precedes shock. New orders use a separate delivery window after decision + lead, within remaining rate and reservation. Later uncommitted contracts may be changed. Full scenario trajectory is known; this is conditional recourse, not an online forecast."}
+
+
+def service_tradeoff(plan: dict) -> dict:
+    from app.core.response_optimizer import optimize_response
+    baseline=standard_environment(plan)
+    try:
+        full=optimize_supply_plan(baseline)
+        minimum=optimize_response(baseline,service_targets=(0.97,0.99))
+    except OptimizationError as exc:
+        return {"status":"unavailable","message":str(exc),"details":exc.details}
+    return {"status":"calculated","full_service":{ "plan":full["plan"],"kpi":summary(full["result"])},
+            "minimum_service":{"plan":minimum["plan"],"kpi":summary(minimum["result"])},
+            "premium_for_full_service_mln":full["result"]["kpi_summary"]["npv"]-minimum["result"]["kpi_summary"]["npv"],
+            "note":"Same fixed investments and initial stock. BASE annual targets 97% total / 99% critical versus full daily service. Daily critical-first issue, storage and reserve retained. No monetary mission loss assumption."}
+
+
+def c_lead_sensitivity(plan: dict, impact: dict) -> dict:
+    from app.core.response_optimizer import optimize_response
+    baseline=deepcopy(impact["base_plan"])
+    rows=[]
+    for months in sorted({0.0,4.0,12.0,float(baseline["c_delivery_lead_months"])}):
+        try:
+            if months==baseline["c_delivery_lead_months"] and impact["conditional_adaptation"]:
+                adapted=impact["conditional_adaptation"]
+            else:
+                adapted=optimize_response({**baseline,"c_delivery_lead_months":months,"scenario":"MANDATORY_STRESS","response_capacity_policy":"conditional_market"})
+            rows.append({"months":months,"kpi":summary(adapted["result"]),"full_recovery":adapted["optimization"]["full_recovery"],"error":None})
+        except OptimizationError as exc:
+            rows.append({"months":months,"kpi":None,"full_recovery":False,"error":str(exc)})
+    return {"rows":rows,"note":"Research bound: same original plan and investments, new capacity assumed available. C preparation unchanged; only operational delivery lead varies. Zero months is an optimistic bound, not a physical claim."}
 
 
 def shock_plan(plan: dict, *, demand: float=1.0, delivery: float=1.0, delay: float=0.0, source: str="D", start_year: int=2038, end_year: int|None=None, price: float=1.0, scenario_id: str="TEAM_SENSITIVITY") -> dict:
@@ -202,47 +288,54 @@ def sensitivity_matrix(plan: dict) -> list[dict]:
     return rows
 
 
-def risk_register(plan: dict) -> dict:
-    baseline = standard_environment(plan)
-    base_result = calculate_plan(baseline)
-    strengthened = strategy_templates(plan)[2]["plan"]
-    try:
-        mitigation = optimize_supply_plan(strengthened)["plan"]
-    except OptimizationError:
-        mitigation = baseline
-    mitigation_base = calculate_plan(mitigation)
-    definitions = [
-        ("R01","Недопоставка ISRU","Снижение производительности пилота","Лунный оператор",{"delivery":0.55},"Контракт на земную подстраховку и увеличенный физический запас",["R02"]),
-        ("R02","Задержка окна поставки D","Задержка приёмки и транспортной готовности","Оператор хаба / D",{"delay":2.0,"end_year":2038},"Предварительный запас, проверка готовности и альтернативные поставки",["R01"]),
-        ("R03","Рост цены Earth-Core","Удорожание агрегированной поставки","Поставщик A / финансирующая сторона",{"source":"A","price":1.4},"Лимит индексации и сравнение диверсифицированных контрактов",[]),
-        ("R04","Высокий спрос после 2038","Ускорение программы миссий","Оператор / заказчики миссий",{"demand":1.25},"Предварительная бронь мощности и согласование приоритетов выдачи",[]),
+def risk_register(plan: dict, mitigation_plan: dict | None = None) -> dict:
+    from app.core.response_optimizer import optimize_response
+    baseline=standard_environment(plan)
+    base_result=calculate_plan(baseline)
+    if mitigation_plan is None:
+        prepared=strategy_templates(plan)[2]["plan"]
+        prepared["reserve_target_days"]=90.0
+        prepared["initial_inventory_t"]=max(prepared["initial_inventory_t"],100*90/365)
+        reservations=deepcopy(prepared.get("yearly_reservations") or {})
+        for y in model_data(prepared)[2]:
+            if y>=2038: reservations.setdefault(y,{})["B"]=110.0
+        prepared["yearly_reservations"]=reservations
+        try:
+            mitigation_plan=optimize_supply_plan(validated(prepared))["plan"]
+            mitigation_plan["reserve_target_days"]=60.0
+        except OptimizationError:
+            mitigation_plan=baseline
+    mitigation_base=calculate_plan(mitigation_plan)
+    definitions=[
+        ("R01","Недопоставка ISRU","Снижение производительности пилота","Лунный оператор",{"delivery":0.55},["R02"]),
+        ("R02","Задержка окна поставки D","Задержка приёмки и транспортной готовности","Оператор хаба / D",{"delay":2.0,"end_year":2038},["R01"]),
+        ("R03","Рост цены Earth-Core","Удорожание агрегированной поставки","Поставщик A / финансирующая сторона",{"source":"A","price":1.4},[]),
+        ("R04","Высокий спрос после 2038","Ускорение программы миссий","Оператор / заказчики миссий",{"demand":1.25},[]),
     ]
     rows=[]
-    for rid,name,cause,owner,changes,measure,dependencies in definitions:
+    for rid,name,cause,owner,changes,dependencies in definitions:
         shocked=shock_plan(baseline,scenario_id=f"TEAM_{rid}",**changes)
         before=calculate_plan(shocked)
-        local_mitigation, local_base, local_base_plan = mitigation, mitigation_base, mitigation
-        measure_status = "reserve_strategy_evaluated"
+        prepared_shock=shock_plan(mitigation_plan,scenario_id=f"TEAM_{rid}",**changes)
+        error=None
         try:
-            local_mitigation = optimize_supply_plan({**strengthened,"research_shock":shocked["research_shock"]})["plan"]
-            protected_base = optimize_supply_plan(with_contract_lock({**local_mitigation,"research_shock":None}))
-            local_base = protected_base["result"]
-            local_base_plan = protected_base["plan"]
-            measure_status = "scenario_and_base_feasible_with_shared_pre_shock_contracts"
-        except OptimizationError:
-            local_mitigation, local_base, local_base_plan = mitigation, mitigation_base, mitigation
-        mitigated={**local_mitigation,"research_shock":shocked["research_shock"]}
-        after=calculate_plan(mitigated)
+            response=optimize_response(prepared_shock)
+            mitigated=response["plan"];after=response["result"]
+            status="booked_capacity_full_recovery" if response["optimization"]["full_recovery"] else "booked_capacity_partial_recovery"
+        except OptimizationError as exc:
+            mitigated=prepared_shock;after=calculate_plan(prepared_shock);status="reaction_not_verified";error=str(exc)
         rows.append({"id":rid,"risk_name":name,"cause":cause,"period":[shocked["research_shock"]["start_year"],shocked["research_shock"]["end_year"]],"owner":owner,
-            "param_delta":shocked["research_shock"],"probability":None,"basis":"TEAM_ASSUMPTION: illustrative severity range; not calibrated event probability", "dependencies":dependencies,
+            "param_delta":shocked["research_shock"],"probability":None,"basis":"TEAM_ASSUMPTION: severity scenarios, not event probabilities","dependencies":dependencies,
             "impact_tons":before["kpi_summary"]["total_shortage"]-base_result["kpi_summary"]["total_shortage"],
             "impact_cost_mln":before["kpi_summary"]["npv"]-base_result["kpi_summary"]["npv"],"impact_rub":None,
             "impact_service_level":before["kpi_summary"]["min_service_level"]-base_result["kpi_summary"]["min_service_level"],
-            "mitigation_measure":measure,"evaluated_measure":"60-day reserve policy, pre-event procurement and contingent later contracts; proposed legal clauses have no unpriced numerical effect", "measure_status":measure_status,
-            "mitigation_cost_mln":local_base["kpi_summary"]["npv"]-base_result["kpi_summary"]["npv"],
+            "mitigation_measure":"Единая подготовленная стратегия: физический буфер и заранее обеспеченная мощность; после события — реакция в пределах брони.",
+            "evaluated_measure":"Same prepared BASE policy in every risk; booked-only recourse. Legal price caps have no unpriced numerical effect.","measure_status":status,"reaction_error":error,
+            "mitigation_cost_mln":mitigation_base["kpi_summary"]["npv"]-base_result["kpi_summary"]["npv"],
             "avoided_shortage_t":before["kpi_summary"]["total_shortage"]-after["kpi_summary"]["total_shortage"],
-            "residual_risk":summary(after),"before":summary(before),"mitigation_plan":local_mitigation,"mitigation_base_plan":local_base_plan})
-    return {"rows":rows,"money_unit":"million constant-price 2035 monetary units; no RUB conversion", "method":"Deterministic severity scenarios, separate from mandatory stress; effects and residuals measured, never inferred from FMEA score products."}
+            "residual_risk":summary(after),"before":summary(before),"mitigation_plan":mitigated,"mitigation_base_plan":mitigation_plan})
+    return {"rows":rows,"money_unit":"million constant-price 2035 units; no RUB conversion",
+        "method":"Separate severity scenarios, same prepared strategy and booked-capacity response; residuals measured, no invented probabilities or FMEA score-to-money conversion."}
 
 
 def geopolitical(plan: dict) -> dict:
@@ -263,11 +356,26 @@ def geopolitical(plan: dict) -> dict:
 
 def build_report(plan: dict) -> dict:
     from app.core.validation_protocol import run_validation
+    from app.core.evidence import EVIDENCE_REGISTER
     payload=validated(plan)
-    return {"report_version":"1.0","generated_at":datetime.now(timezone.utc).isoformat(),"model_version":MODEL_VERSION,
+    comparisons=comparison_bundle(payload)
+    impact=stress_impact(payload)
+    variants=[{"id":"original_base","name":"Исходный BASE","kpi":summary(impact["base"])},
+              {"id":"unchanged_stress","name":"Шок без действий","kpi":summary(impact["stress"])}]
+    if impact["adaptation"]:
+        variants.append({"id":"adapted_stress","name":"Реакция в пределах брони","kpi":summary(impact["adaptation"]["result"])})
+    if impact["conditional_adaptation"]:
+        variants.append({"id":"conditional_stress","name":"Условно: новые контракты доступны","kpi":summary(impact["conditional_adaptation"]["result"])})
+    resilience=comparisons["resilience"]
+    if resilience["status"]=="calculated":
+        variants.append({"id":"prepared_stress","name":"Подготовленная стратегия в STRESS","kpi":summary(resilience["resilient_stress_result"])})
+    return {"report_version":"1.2","generated_at":datetime.now(timezone.utc).isoformat(),"model_version":MODEL_VERSION,
             "input_version":config_version(payload),"plan_hash":hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest(),
-            "plan":payload,"selected_result":calculate_plan(payload),"comparisons":comparison_bundle(payload),
-            "stress_impact":stress_impact(payload),"crash_limits":crash_limits(payload),"sensitivity":sensitivity_matrix(payload),
-            "risk_register":risk_register(payload),"geopolitical":geopolitical(payload),"validation":run_validation(),
+            "plan":payload,"selected_result":calculate_plan(payload),"comparisons":comparisons,
+            "decision_comparison":{"rows":variants,"note":"Original, unchanged-stress and two recourse rows retain selected investments; conditional recourse assumes access to new capacity. Prepared strategy changes investments and pre-shock orders, and must be chosen before 2038."},
+            "stress_impact":impact,"crash_limits":crash_limits(payload),"sensitivity":sensitivity_matrix(payload),
+            "risk_register":risk_register(payload,comparisons["decision_case"]["recommendation"].get("plan")),"geopolitical":geopolitical(payload),"validation":run_validation(),
+            "service_tradeoff":service_tradeoff(payload),
+            "c_delivery_sensitivity":c_lead_sensitivity(payload,impact),"evidence_register":EVIDENCE_REGISTER,
             "units":{"fuel":"t","money":"million constant-price 2035 monetary units","service":"share"},
             "scope":"No probabilities or mission-loss monetary values asserted. Delays are no-catch-up adverse bounds. Research assumptions retained in each plan. Documents must use this report's hash/version."}

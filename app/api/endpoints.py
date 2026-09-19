@@ -61,6 +61,24 @@ def optimize(plan: PlanRequest) -> dict:
         ) from error
 
 
+@router.post("/adapt")
+def adapt(plan: PlanRequest) -> dict:
+    from app.core.response_optimizer import optimize_response
+    from app.core.optimizer import OptimizationError
+    payload=plan.model_dump()
+    payload["scenario"]="MANDATORY_STRESS"
+    payload["demand_profile"]="BASE"
+    payload["research_shock"]=None
+    if not analytics_slot.acquire(blocking=False):
+        raise HTTPException(429,"Расчёт уже выполняется. Дождитесь завершения.")
+    try:
+        return optimize_response(payload)
+    except OptimizationError as error:
+        raise HTTPException(422,detail={"message":str(error),"details":error.details,"code":"RESPONSE_NOT_VERIFIED"}) from error
+    finally:
+        analytics_slot.release()
+
+
 def export_envelope(plan: dict, result: dict) -> dict:
     """Match the organiser export.schema.json and retain the complete engine result."""
     return {

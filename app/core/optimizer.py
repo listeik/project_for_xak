@@ -118,6 +118,8 @@ def optimize_supply_plan(plan: dict) -> dict:
     Orders are replaced; investments, explicit reservations, initial inventory,
     scenario, discount rate and sensitivity/lead-time assumptions stay fixed.
     """
+    if plan.get("additional_orders") or (plan.get("contract_lock") or {}).get("policy") == "preserve_commitments_allow_timed_topups":
+        raise OptimizationError("Это план реакции: используйте «Подобрать реакцию после шока», чтобы сохранить сроки дозаказов.")
     SOURCES, _, YEARS = model_data(plan)
     SOURCE_IDS = tuple(SOURCES)
     frozen = locked_contracts(plan)

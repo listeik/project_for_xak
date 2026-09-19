@@ -28,7 +28,7 @@ def source_shock(plan: dict, source: str, year: int) -> dict:
 def extended_plan(plan: dict, last_year: int = 2042) -> dict:
     """Synthetic demonstration, not a forecast or replacement of CASE_INPUT."""
     result = deepcopy(plan)
-    result.update(scenario="BASE", demand_profile="BASE", research_shock=None, contract_lock=None)
+    result.update(scenario="BASE", demand_profile="BASE", research_shock=None, contract_lock=None, additional_orders={})
     result["research_config"] = {
         "config_id": f"TEAM_EXTENSION_{last_year}",
         "assumptions": "Synthetic engineering demonstration. Future demand grows 5% per year from 2040; critical share stays 250/390; LOW/HIGH are 0.8/1.25. Nominal 2035 prices and capacities persist. F is a hypothetical purchased delivery service without separate CAPEX; no Mars feasibility claim. No probability model. Original CAPEX limits remain; cumulative future cap is explicitly 2800 million 2035 units. No mandatory shocks after 2040.",

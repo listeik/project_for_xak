@@ -39,12 +39,16 @@ class PlanRequest(StrictInput):
     plan_id: Annotated[str, Field(strict=True, min_length=1, max_length=128)] = "untitled-plan"
     yearly_orders: dict[int, dict[SourceId, Quantity]]
     yearly_reservations: dict[int, dict[SourceId, Quantity]] | None = None
+    additional_orders: dict[int, dict[SourceId, Quantity]] = Field(default_factory=dict)
     investments: InvestmentDecisions = Field(default_factory=InvestmentDecisions)
     scenario: Scenario = "BASE"
     demand_profile: Literal["BASE", "LOW", "HIGH"] = "BASE"
     research_config: ResearchConfig | None = None
     research_shock: ResearchShock | None = None
     contract_lock: ContractLock | None = None
+    response_capacity_policy: Literal["booked_only", "conditional_market"] = "booked_only"
+    new_capacity_fraction: Annotated[float, Field(strict=True, ge=0, le=1, allow_inf_nan=False)] = 1.0
+    c_delivery_lead_months: Annotated[float, Field(strict=True, ge=0, le=24, allow_inf_nan=False)] = 4.0
     reserve_target_days: Annotated[float, Field(strict=True, ge=45, le=90)] = 45.0
     initial_inventory_t: Quantity = DEFAULT_INITIAL_INVENTORY
     discount_rate: Annotated[
@@ -94,7 +98,15 @@ class PlanRequest(StrictInput):
             if self.scenario == "MANDATORY_STRESS" and shock.combination_rule != "multiply_independent_effects":
                 raise ValueError("Сочетание шоков требует явного правила multiply_independent_effects.")
         lock = self.contract_lock
+        if any(y not in years or set(row)-sources for y,row in self.additional_orders.items()):
+            raise ValueError("Дозаказы содержат неизвестный год или источник.")
+        if self.additional_orders and (not lock or lock.policy != "preserve_commitments_allow_timed_topups"):
+            raise ValueError("Дозаказы разрешены только в режиме реакции с сохранением обязательств.")
+        if lock and any(y < lock.shock_year and any(row.values()) for y,row in self.additional_orders.items()):
+            raise ValueError("Дозаказ не может поступить до наступления шока.")
         if lock:
+            if lock.baseline_c_delivery_lead_months != self.c_delivery_lead_months:
+                raise ValueError("Срок доставки C после ввода нельзя менять задним числом в режиме реакции.")
             if lock.shock_year not in years or set(lock.baseline_orders) != years or any(set(row) != sources for row in lock.baseline_orders.values()):
                 raise ValueError("Зафиксированный план должен соответствовать полному горизонту и источникам.")
             if any(y not in years or set(row)-sources for y,row in (lock.baseline_reservations or {}).items()):
@@ -111,7 +123,7 @@ class PlanRequest(StrictInput):
             raise ValueError("Название плана не должно быть пустым.")
         return value
 
-    @field_validator("yearly_orders", "yearly_reservations", mode="before")
+    @field_validator("yearly_orders", "yearly_reservations", "additional_orders", mode="before")
     @classmethod
     def normalize_year_keys(cls, value):
         if value is None or not isinstance(value, dict):

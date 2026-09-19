@@ -1,15 +1,15 @@
 {
-  "plan_id": "TEAM_EARTH_PREPARED",
+  "plan_id": "TEAM_RESERVE_PREPARED",
   "yearly_orders": {
     "2035": {
-      "A": 112.4578641612278,
+      "A": 115.03980492003149,
       "B": 0.0,
       "C": 0.0,
       "D": 0.0,
       "E": 0.0
     },
     "2036": {
-      "A": 151.0592867838697,
+      "A": 154.1789140923939,
       "B": 0.0,
       "C": 0.0,
       "D": 0.0,
@@ -18,29 +18,29 @@
     "2037": {
       "A": 190.0,
       "B": 0.0,
-      "C": 13.538350618375588,
+      "C": 17.281903388604718,
       "D": 0.0,
       "E": 0.0
     },
     "2038": {
-      "A": 190.0,
+      "A": 170.5611446952551,
       "B": 0.0,
-      "C": 93.12794631468002,
-      "D": 0.0,
+      "C": 0.0,
+      "D": 99.94520547945206,
       "E": 0.0
     },
     "2039": {
       "A": 190.0,
-      "B": 62.51483556097784,
-      "C": 130.0,
-      "D": 0.0,
+      "B": 110.0,
+      "C": 31.35655260384085,
+      "D": 120.0,
       "E": 0.0
     },
     "2040": {
-      "A": 190.0,
-      "B": 77.98125450612822,
-      "C": 130.0,
-      "D": 0.0,
+      "A": 177.40447007927975,
+      "B": 97.33237202598318,
+      "C": 0.0,
+      "D": 120.0,
       "E": 0.0
     }
   },
@@ -57,31 +57,64 @@
   },
   "additional_orders": {
     "2038": {
-      "B": 6.990460872945904
+      "B": 73.23287671232877
     }
   },
   "investments": {
     "zbo_year": 2036,
     "option_c_year": 2035,
     "exercise_c_year": 2035,
-    "isru_funding_year": null
+    "isru_funding_year": 2037
   },
-  "scenario": "MANDATORY_STRESS",
+  "scenario": "BASE",
   "demand_profile": "BASE",
   "research_config": null,
-  "research_shock": null,
+  "research_shock": {
+    "scenario_id": "TEAM_EARTH_COMMON_CAUSE",
+    "description": "TEAM_ASSUMPTION: shared Earth infrastructure reduces A/B/C/E deliveries to 50% in 2038–2039. C shares the corridor by explicit assumption. Not a forecast or probability; separate from mandatory stress.",
+    "start_year": 2038,
+    "end_year": 2039,
+    "demand_factor": 1.0,
+    "sources": {
+      "A": {
+        "delivery_factor": 0.5,
+        "price_factor": 1.0,
+        "capacity_factor": 1.0,
+        "delay_months": 0.0
+      },
+      "B": {
+        "delivery_factor": 0.5,
+        "price_factor": 1.0,
+        "capacity_factor": 1.0,
+        "delay_months": 0.0
+      },
+      "C": {
+        "delivery_factor": 0.5,
+        "price_factor": 1.0,
+        "capacity_factor": 1.0,
+        "delay_months": 0.0
+      },
+      "E": {
+        "delivery_factor": 0.5,
+        "price_factor": 1.0,
+        "capacity_factor": 1.0,
+        "delay_months": 0.0
+      }
+    },
+    "combination_rule": "standalone"
+  },
   "contract_lock": {
     "shock_year": 2038,
     "baseline_orders": {
       "2035": {
-        "A": 112.4578641612278,
+        "A": 115.03980492003149,
         "B": 0.0,
         "C": 0.0,
         "D": 0.0,
         "E": 0.0
       },
       "2036": {
-        "A": 151.0592867838697,
+        "A": 154.1789140923939,
         "B": 0.0,
         "C": 0.0,
         "D": 0.0,
@@ -90,29 +123,29 @@
       "2037": {
         "A": 190.0,
         "B": 0.0,
-        "C": 13.538350618375588,
+        "C": 17.281903388604718,
         "D": 0.0,
         "E": 0.0
       },
       "2038": {
-        "A": 190.0,
+        "A": 170.5611446952551,
         "B": 0.0,
-        "C": 93.12794631468002,
-        "D": 0.0,
+        "C": 0.0,
+        "D": 99.94520547945206,
         "E": 0.0
       },
       "2039": {
         "A": 190.0,
         "B": 0.0,
-        "C": 130.0,
-        "D": 0.0,
+        "C": 31.35655260384085,
+        "D": 120.0,
         "E": 0.0
       },
       "2040": {
-        "A": 190.0,
-        "B": 1.7375630857680444,
-        "C": 130.0,
-        "D": 0.0,
+        "A": 177.40447007927924,
+        "B": 0.0,
+        "C": 0.0,
+        "D": 120.0,
         "E": 0.0
       }
     },
@@ -131,9 +164,9 @@
       "zbo_year": 2036,
       "option_c_year": 2035,
       "exercise_c_year": 2035,
-      "isru_funding_year": null
+      "isru_funding_year": 2037
     },
-    "baseline_initial_inventory_t": 18.493150684931507,
+    "baseline_initial_inventory_t": 24.65753424657534,
     "baseline_c_lead_months": 24.0,
     "baseline_c_delivery_lead_months": 4.0,
     "baseline_d_lead_months": 2.0,
@@ -142,8 +175,8 @@
   "response_capacity_policy": "booked_only",
   "new_capacity_fraction": 1.0,
   "c_delivery_lead_months": 4.0,
-  "reserve_target_days": 45.0,
-  "initial_inventory_t": 18.493150684931507,
+  "reserve_target_days": 60.0,
+  "initial_inventory_t": 24.65753424657534,
   "discount_rate": 0.08,
   "c_lead_months": 24.0,
   "d_lead_months": 2.0,

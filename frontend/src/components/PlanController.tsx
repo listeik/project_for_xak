@@ -29,7 +29,7 @@ export default function PlanController({ plan, caseData, year, row, updatePlan, 
   ];
   return <aside className="panel controller-panel">
     <div className="panel-heading"><div><p className="eyebrow"><SlidersHorizontal size={13} /> Решения оператора</p><h2>Управление планом <span className="text-cyan">{year}</span></h2></div></div>
-    <div className="scenario-switch" role="group" aria-label="Сценарий расчёта">
+    <fieldset className="plan-fields" disabled={!!plan.contract_lock}><div className="scenario-switch" role="group" aria-label="Сценарий расчёта">
       <button type="button" aria-pressed={plan.scenario === 'BASE'} className={plan.scenario === 'BASE' ? 'active' : ''} onClick={() => updatePlan({ ...plan, scenario: 'BASE' })}>BASE <span>Базовый</span></button>
       <button type="button" aria-pressed={plan.scenario === 'MANDATORY_STRESS'} className={plan.scenario === 'MANDATORY_STRESS' ? 'active stress' : ''} onClick={() => updatePlan({ ...plan, scenario: 'MANDATORY_STRESS', demand_profile: 'BASE', research_shock: null })}><FlaskConical size={14} /> STRESS <span>Обязательный</span></button>
     </div>
@@ -46,6 +46,7 @@ export default function PlanController({ plan, caseData, year, row, updatePlan, 
         <div className="source-meta"><span>{number(source.variable_cost_mln_per_t)} млн/т · ToP {percent(source.take_or_pay_share, 0)}</span><span>Поставка: {row?.source_breakdown[source.source_id] ? `${number(row.source_breakdown[source.source_id].delivered_t)} т` : '—'}</span></div>
       </div>)}
     </div>
+    {Object.values(plan.additional_orders?.[year]??{}).some(q=>(q??0)>0)&&<div className="analytics-note"><strong>Дозаказы после шока, {year}</strong>{Object.entries(plan.additional_orders[year]).map(([source,quantity])=><p key={source}>{source}: +{number(quantity??0,2)} т — график прибытия в таблице поставок.</p>)}</div>}
     <div className="control-section-heading investment-heading"><h3>Инвестиции</h3><span>весь горизонт</span></div>
     <div className="investments">
       {investmentRows.map(({ key, title, detail, fallback, years }) => <div className="investment-row" key={key}>
@@ -59,16 +60,18 @@ export default function PlanController({ plan, caseData, year, row, updatePlan, 
     <details className="advanced-controls"><summary>Допущения и бронь <ChevronDown size={14} /></summary><div className="advanced-grid">
       <label>Начальный запас, т<NumericInput label="Начальный запас, тонн" value={plan.initial_inventory_t} onChange={(value) => updatePlan({ ...plan, initial_inventory_t: value })} /></label>
       <label>Ставка дисконта, %<NumericInput label="Ставка дисконтирования, процентов" value={Number((plan.discount_rate * 100).toFixed(6))} max={100} onChange={(value) => updatePlan({ ...plan, discount_rate: value / 100 })} /></label>
-      <label>Lead time C, мес.<NumericInput label="Срок поставки C, месяцев" value={plan.c_lead_months} min={18} max={24} step={1} onChange={(value) => updatePlan({ ...plan, c_lead_months: value })} /></label>
+      <label>Подготовка C, мес.<NumericInput label="Срок подготовки C после исполнения опциона, месяцев" value={plan.c_lead_months} min={18} max={24} step={1} onChange={(value) => updatePlan({ ...plan, c_lead_months: value })} /></label>
+      <label>Доставка C после ввода, мес.<NumericInput label="Допущение: срок доставки C после ввода, месяцев" value={plan.c_delivery_lead_months} min={0} max={24} step={1} onChange={(value) => updatePlan({ ...plan, c_delivery_lead_months: value })} /></label>
+      <label>Доступная новая мощность, %<NumericInput label="Условный рынок: доступная доля свободной мощности, процентов" value={plan.new_capacity_fraction*100} min={0} max={100} step={5} onChange={(value) => updatePlan({ ...plan, new_capacity_fraction: value/100 })} /></label>
       <label>Lead time D, мес.<NumericInput label="Срок поставки D, месяцев" value={plan.d_lead_months} min={1} max={2} step={0.1} onChange={(value) => updatePlan({ ...plan, d_lead_months: value })} /></label>
       <label>Целевой резерв, дней<NumericInput label="Целевой физический резерв, дней" value={plan.reserve_target_days ?? 45} min={45} max={90} step={1} onChange={(value) => updatePlan({ ...plan, reserve_target_days: value })} /></label>
       <label>Множитель спроса<NumericInput label="Исследовательский множитель спроса" value={plan.demand_factor} step={0.05} max={1000} onChange={(value) => updatePlan({ ...plan, demand_factor: value })} /></label>
       <label>Множитель цены<NumericInput label="Исследовательский множитель цены" value={plan.price_factor} step={0.05} max={1000} onChange={(value) => updatePlan({ ...plan, price_factor: value })} /></label>
-    </div><p className="field-hint">Множитель спроса применяется дополнительно к выбранному профилю во все годы. Множители, отличные от 1, включают исследование чувствительности.</p>
-      <h4>Явная бронь на {year}, т/год</h4><p className="field-hint">Пустое поле — автоматический расчёт брони. Ноль — явно нулевая бронь.</p>
+    </div><p className="field-hint">Подготовка C: 18–24 месяца после исполнения опциона. Доставка после ввода: допущение команды, по умолчанию 4 месяца; экспертами не задана. Доля новой мощности применяется только к условной реакции на шаге 2; основная использует прежнюю бронь. Множитель спроса применяется ко всему горизонту; значения, отличные от 1, — отдельное исследование.</p>
+      <h4>Явная бронь на {year}, т/год</h4><p className="field-hint">Пустое поле — бронь под исходный заказ. Ноль — явно нулевая бронь. В реакции исходная мощность сохраняется; свободная техническая мощность не означает доступный новый контракт.</p>
       <div className="reservation-inputs">{caseData.sources.map((source) => <label key={source.source_id}>{source.source_id}<input className="number-input" type="number" min={0} step={0.1} placeholder="Авто" aria-label={`Бронь мощности ${source.name}, ${year}, тонн в год`} value={plan.yearly_reservations?.[year]?.[source.source_id] ?? ''} onChange={(event) => updateReservation(source.source_id, event.target.value)} /></label>)}</div>
     </details>
-    <button type="button" className="button optimize-button" onClick={onOptimize} disabled={disabled || optimizing}>{optimizing ? <LoaderCircle size={17} className="spin" /> : <Sparkles size={17} />}{optimizing ? 'Подбираем заказы…' : 'Оптимизировать закупки'}</button>
-    <p className="optimize-caption">Минимум NPV при фиксированных инвестициях и 100% обслуживании. Оптимизация изменит доступные заказы на весь горизонт. В отчёте реакции на шок ранее размещённые годовые контракты фиксируются.</p>
+    <button type="button" className="button optimize-button" onClick={onOptimize} disabled={disabled || optimizing}>{optimizing ? <LoaderCircle size={17} className="spin" /> : <Sparkles size={17} />}{optimizing ? 'Подбираем заказы…' : 'Оптимизировать план заранее'}</button>
+    </fieldset><p className="optimize-caption">Минимум NPV при фиксированных инвестициях и 100% обслуживании. Оптимизация изменит доступные заказы на весь горизонт. В отчёте реакции на шок ранее размещённые годовые контракты фиксируются.</p>
   </aside>;
 }
