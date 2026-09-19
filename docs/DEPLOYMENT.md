@@ -44,6 +44,23 @@ cd ..
 
 ## Render
 
+Сервисы созданы напрямую через Render-плагин в `1isteik's workspace`:
+
+- Фронтенд: https://kosmo-fuel-web.onrender.com
+  ([панель сервиса](https://dashboard.render.com/static/srv-dan18tugekts73fap6ag)).
+- API: https://kosmo-fuel-api.onrender.com
+  ([панель сервиса](https://dashboard.render.com/web/srv-dan18pmgekts73faoo00)).
+- Бэкенд использует Free в регионе Frankfurt, фронтенд — бесплатный Static Site.
+- Оба сервиса связаны с веткой `master` репозитория
+  `https://github.com/listeik/project_for_xak` и автоматически разворачиваются после push.
+- `VITE_API_BASE_URL=https://kosmo-fuel-api.onrender.com`;
+  `ALLOWED_ORIGINS` включает `https://kosmo-fuel-web.onrender.com`.
+
+Повторно создавать Blueprint для этих сервисов не нужно: они управляются через
+панели сервисов или Render-плагин. `render.yaml` остаётся шаблоном для нового размещения.
+
+### Новое размещение через Blueprint
+
 `render.yaml` описывает отдельный бесплатный Python Web Service и Static Site.
 Подключите GitHub-репозиторий `https://github.com/listeik/project_for_xak`
 через **New → Blueprint** в Render и выберите ветку `master`.
@@ -59,7 +76,10 @@ cd ..
 в подключённую ветку GitHub, без ожидания CI. Автотесты пока отложены;
 CI устанавливает зависимости, проверяет комплектность исходных данных,
 компилирует Python и собирает фронтенд.
-Путь проверки здоровья: `/api/v1/health`. Для SPA задан возврат `index.html` на клиентских маршрутах.
+Путь ручной проверки здоровья: `/api/v1/health`. Blueprint также настраивает этот
+путь как health check и возврат `index.html` на клиентских маршрутах SPA.
+При прямом создании через плагин используются стандартные проверки Render;
+интерфейс приложения открывается по корневому адресу и использует якорную навигацию.
 
 Используйте реальные адреса, показанные Render: имена поддоменов могут отличаться
 от имён сервисов. После изменения `VITE_API_BASE_URL` пересоберите фронтенд;

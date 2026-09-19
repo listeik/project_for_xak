@@ -4,6 +4,11 @@ React 18 SPA и отдельный FastAPI API для планирования �
 топливного узла. Все материальные и финансовые расчёты выполняются на Python.
 Интерфейс редактирует решения и отображает полученный результат.
 
+Сайт: **https://kosmo-fuel-web.onrender.com** ·
+API: **https://kosmo-fuel-api.onrender.com/docs**.
+Обновление после коммита: `git push github master` — Render автоматически
+пересобирает фронтенд и бэкенд. После простоя первый расчёт может ждать пробуждения API.
+
 ## Запуск приложения
 
 При установленном Docker:
@@ -53,7 +58,6 @@ NPV в интерфейсе означает приведённую **стоим
 | `app/api/` | REST API, экспорт |
 | `frontend/` | React, TypeScript, Vite, Tailwind, Lucide, ECharts |
 | `data/`, `scenarios/` | Неизменённые входы организаторов |
-| `tests/` | Контрольные, граничные и интеграционные проверки |
 | `validation/` | Исходные V01–V10 организаторов |
 | `deploy/`, `compose.yaml`, `render.yaml` | Локальное и внешнее размещение |
 
@@ -64,13 +68,13 @@ NPV в интерфейсе означает приведённую **стоим
 
 ```bash
 python tools/validate_reference_repo.py
-python -m pytest -q
-python -m ruff check app tests tools/dev.py
+python -m compileall -q app tools/dev.py
 cd frontend
 npm run build
 ```
 
-В CI проверяются контрольные исходные данные, Python-тесты и сборка фронтенда.
+Автотесты пока отложены. В CI проверяются контрольные исходные данные,
+компиляция Python и сборка фронтенда.
 Проверка отсутствия решения в стартовом наборе сохранена только для режима
 `python tools/validate_reference_repo.py --starter`: она намеренно не подходит
 для репозитория с готовым приложением.
