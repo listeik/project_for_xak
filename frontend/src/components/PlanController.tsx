@@ -31,7 +31,7 @@ export default function PlanController({ plan, caseData, year, row, updatePlan, 
     <div className="panel-heading"><div><p className="eyebrow"><SlidersHorizontal size={13} /> Решения оператора</p><h2>Управление планом <span className="text-cyan">{year}</span></h2></div></div>
     <div className="scenario-switch" role="group" aria-label="Сценарий расчёта">
       <button type="button" aria-pressed={plan.scenario === 'BASE'} className={plan.scenario === 'BASE' ? 'active' : ''} onClick={() => updatePlan({ ...plan, scenario: 'BASE' })}>BASE <span>Базовый</span></button>
-      <button type="button" aria-pressed={plan.scenario === 'MANDATORY_STRESS'} className={plan.scenario === 'MANDATORY_STRESS' ? 'active stress' : ''} onClick={() => updatePlan({ ...plan, scenario: 'MANDATORY_STRESS', demand_profile: 'BASE' })}><FlaskConical size={14} /> STRESS <span>Обязательный</span></button>
+      <button type="button" aria-pressed={plan.scenario === 'MANDATORY_STRESS'} className={plan.scenario === 'MANDATORY_STRESS' ? 'active stress' : ''} onClick={() => updatePlan({ ...plan, scenario: 'MANDATORY_STRESS', demand_profile: 'BASE', research_shock: null })}><FlaskConical size={14} /> STRESS <span>Обязательный</span></button>
     </div>
     {plan.scenario === 'MANDATORY_STRESS' && <p className="stress-description">С 2038: спрос +15%, потери ≤2%. В 2038–2039: A/B +25% к цене; поставки D — 55% / 75% плана.</p>}
     <div className="demand-profile-control"><label htmlFor="demand-profile">Профиль спроса</label><select id="demand-profile" value={plan.demand_profile} disabled={plan.scenario === 'MANDATORY_STRESS'} onChange={(event) => updatePlan({ ...plan, demand_profile: event.target.value as DemandProfile })}>
@@ -43,7 +43,7 @@ export default function PlanController({ plan, caseData, year, row, updatePlan, 
         <div className="source-title"><label htmlFor={`order-${source.source_id}`}><span className="source-letter">{source.source_id}</span><span>{source.name}</span></label><span className="source-limit">до {number(source.capacity_t_per_year, 0)} т/год</span></div>
         <div className="source-inputs"><input id={`order-${source.source_id}`} type="range" min={0} max={Math.max(source.capacity_t_per_year, plan.yearly_orders[year][source.source_id])} step={1} value={plan.yearly_orders[year][source.source_id]} aria-label={`Заказ ${source.name}, ${year}, ползунок`} onChange={(event) => updateOrder(source.source_id, Number(event.target.value))} />
           <NumericInput label={`Заказ ${source.name}, ${year}, тонн`} value={plan.yearly_orders[year][source.source_id]} onChange={(value) => updateOrder(source.source_id, value)} /></div>
-        <div className="source-meta"><span>{number(source.variable_cost_mln_per_t)} млн/т · ToP {percent(source.take_or_pay_share, 0)}</span><span>Поставка: {row ? `${number(row.source_breakdown[source.source_id].delivered_t)} т` : '—'}</span></div>
+        <div className="source-meta"><span>{number(source.variable_cost_mln_per_t)} млн/т · ToP {percent(source.take_or_pay_share, 0)}</span><span>Поставка: {row?.source_breakdown[source.source_id] ? `${number(row.source_breakdown[source.source_id].delivered_t)} т` : '—'}</span></div>
       </div>)}
     </div>
     <div className="control-section-heading investment-heading"><h3>Инвестиции</h3><span>весь горизонт</span></div>
@@ -61,6 +61,7 @@ export default function PlanController({ plan, caseData, year, row, updatePlan, 
       <label>Ставка дисконта, %<NumericInput label="Ставка дисконтирования, процентов" value={Number((plan.discount_rate * 100).toFixed(6))} max={100} onChange={(value) => updatePlan({ ...plan, discount_rate: value / 100 })} /></label>
       <label>Lead time C, мес.<NumericInput label="Срок поставки C, месяцев" value={plan.c_lead_months} min={18} max={24} step={1} onChange={(value) => updatePlan({ ...plan, c_lead_months: value })} /></label>
       <label>Lead time D, мес.<NumericInput label="Срок поставки D, месяцев" value={plan.d_lead_months} min={1} max={2} step={0.1} onChange={(value) => updatePlan({ ...plan, d_lead_months: value })} /></label>
+      <label>Целевой резерв, дней<NumericInput label="Целевой физический резерв, дней" value={plan.reserve_target_days ?? 45} min={45} max={90} step={1} onChange={(value) => updatePlan({ ...plan, reserve_target_days: value })} /></label>
       <label>Множитель спроса<NumericInput label="Исследовательский множитель спроса" value={plan.demand_factor} step={0.05} max={1000} onChange={(value) => updatePlan({ ...plan, demand_factor: value })} /></label>
       <label>Множитель цены<NumericInput label="Исследовательский множитель цены" value={plan.price_factor} step={0.05} max={1000} onChange={(value) => updatePlan({ ...plan, price_factor: value })} /></label>
     </div><p className="field-hint">Множитель спроса применяется дополнительно к выбранному профилю во все годы. Множители, отличные от 1, включают исследование чувствительности.</p>
@@ -68,6 +69,6 @@ export default function PlanController({ plan, caseData, year, row, updatePlan, 
       <div className="reservation-inputs">{caseData.sources.map((source) => <label key={source.source_id}>{source.source_id}<input className="number-input" type="number" min={0} step={0.1} placeholder="Авто" aria-label={`Бронь мощности ${source.name}, ${year}, тонн в год`} value={plan.yearly_reservations?.[year]?.[source.source_id] ?? ''} onChange={(event) => updateReservation(source.source_id, event.target.value)} /></label>)}</div>
     </details>
     <button type="button" className="button optimize-button" onClick={onOptimize} disabled={disabled || optimizing}>{optimizing ? <LoaderCircle size={17} className="spin" /> : <Sparkles size={17} />}{optimizing ? 'Подбираем заказы…' : 'Оптимизировать закупки'}</button>
-    <p className="optimize-caption">Минимум NPV при фиксированных инвестициях и 100% обслуживании. Оптимизация изменит заказы на все 6 лет. Это планирование заранее; уже заключённые контракты не фиксируются.</p>
+    <p className="optimize-caption">Минимум NPV при фиксированных инвестициях и 100% обслуживании. Оптимизация изменит доступные заказы на весь горизонт. В отчёте реакции на шок ранее размещённые годовые контракты фиксируются.</p>
   </aside>;
 }

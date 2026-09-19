@@ -1,4 +1,4 @@
-export type SourceId = 'A' | 'B' | 'C' | 'D' | 'E';
+export type SourceId = string;
 export type Scenario = 'BASE' | 'MANDATORY_STRESS';
 export type DemandProfile = 'BASE' | 'LOW' | 'HIGH';
 export type Orders = Record<SourceId, number>;
@@ -21,6 +21,10 @@ export interface Plan {
   d_lead_months: number;
   demand_factor: number;
   price_factor: number;
+  reserve_target_days: number;
+  research_config: { config_id: string; assumptions: string; extra_sources: Source[]; future_demand: {year:number}[] } | null;
+  research_shock: {scenario_id:string; description:string; start_year:number; end_year:number; demand_factor:number; sources:Record<string,{price_factor:number; delivery_factor:number; delay_months:number; capacity_factor:number}>; combination_rule:'standalone'|'multiply_independent_effects'} | null;
+  contract_lock: Record<string, unknown> | null;
 }
 export interface Source {
   source_id: SourceId;
@@ -116,6 +120,10 @@ export interface Calculation {
   kpi_summary: {
     npv: number;
     total_cost: number;
+    cost_per_served_ton: number | null;
+    discounted_cost_per_served_ton: number | null;
+    max_annual_shortage: number;
+    horizon_capex_limit: number;
     min_service_level: number;
     min_critical_service_level: number;
     total_capex: number;
@@ -136,7 +144,7 @@ export interface Calculation {
   inventory_trace: InventoryPoint[];
   source_schedule: Array<SourceContract & { source_id: SourceId; source_name: string; year: number; kind: string; first_order_date: string | null; first_arrival_date: string | null }>;
   financial_breakdown: { annual: AnnualBalance[] };
-  assumptions: { research_factors_active: boolean };
+  assumptions: { research_factors_active: boolean; reserve_target_days: number; research_shock: Plan['research_shock'] };
 }
 export interface Optimization {
   status: string;

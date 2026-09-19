@@ -18,6 +18,7 @@ export function usePlanner() {
   const current = useRef<Plan | null>(null);
   const confirmed = useRef<Snapshot | null>(null);
   const defaults = useRef<Plan | null>(null);
+  const baseCase = useRef<CaseData | null>(null);
   const calculation = useRef<AbortController | null>(null);
   const operation = useRef<AbortController | null>(null);
 
@@ -26,6 +27,10 @@ export function usePlanner() {
     operation.current?.abort();
     current.current = next;
     setPlan(next);
+    if (baseCase.current) setCaseData({ ...baseCase.current,
+      years: [...baseCase.current.years,...(next.research_config?.future_demand.map(row=>row.year) ?? [])].sort((a,b)=>a-b),
+      sources: [...baseCase.current.sources,...(next.research_config?.extra_sources ?? [])],
+    });
     setBusy(null);
     setError('');
     setReport(null);
@@ -43,6 +48,7 @@ export function usePlanner() {
       .then(([data, initial]) => {
         if (controller.signal.aborted) return;
         defaults.current = initial;
+        baseCase.current = data;
         setCaseData(data);
         apply(initial);
       })
@@ -102,7 +108,7 @@ export function usePlanner() {
     setBusy('importing');
     setError('');
     try {
-      if (file.size > 2_000_000) throw new Error('Файл плана слишком большой. Максимальный размер — 2 МБ.');
+      if (file.size > 20_000_000) throw new Error('Файл плана слишком большой. Максимальный размер — 20 МБ.');
       let parsed: unknown;
       try { parsed = JSON.parse(await file.text()); }
       catch { throw new Error('Файл не содержит корректный JSON. Выберите сохранённый план или JSON-экспорт.'); }
@@ -130,6 +136,11 @@ export function usePlanner() {
 
   return {
     caseData, plan, snapshot, bootError, error, busy, report,
+    snapshotCaseData: baseCase.current && snapshot ? {
+      ...baseCase.current,
+      years: snapshot.result.annual_balances.map(row => row.year),
+      sources: [...baseCase.current.sources, ...(snapshot.plan.research_config?.extra_sources ?? [])],
+    } : null,
     pending: !!plan && snapshot?.plan !== plan,
     updatePlan: apply,
     retryCalculation: () => { setError(''); setRetry((value) => value + 1); },

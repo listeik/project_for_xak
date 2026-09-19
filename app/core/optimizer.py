@@ -17,6 +17,7 @@ from scipy.sparse import csr_matrix
 
 from app.core.balance_engine import (
     calculate_plan,
+    locked_contracts,
     capex_by_year,
     commissioning_day,
     effective_year_data,
@@ -24,6 +25,7 @@ from app.core.balance_engine import (
     source_contract,
     startup_stock,
 )
+from app.core.configuration import model_data
 from app.core.constants import (
     CONSTRAINTS,
     DAYS_PER_YEAR,
@@ -45,28 +47,26 @@ class OptimizationError(ValueError):
         self.details = details or []
 
 
-def _emergency_masks() -> list[tuple[int, ...]]:
+def _emergency_masks(years=YEARS) -> list[tuple[int, ...]]:
     """Enumerate maximal admissible supports; enabled years may still order zero."""
     streak_limit = int(CONSTRAINTS["EMERGENCY_BASE_STREAK"]["value"])
     valid = []
-    for mask in product((0, 1), repeat=len(YEARS)):
+    for mask in product((0, 1), repeat=len(years)):
         if any(
             all(mask[start : start + streak_limit + 1])
-            for start in range(len(YEARS) - streak_limit)
+            for start in range(len(years) - streak_limit)
         ):
             continue
         valid.append(mask)
-    return [
-        mask
-        for mask in valid
-        if not any(
-            mask != other and all(left <= right for left, right in zip(mask, other))
-            for other in valid
-        )
-    ]
+    valid_set = set(valid)
+    return [mask for mask in valid if not any(
+        tuple(1 if j == i else value for j, value in enumerate(mask)) in valid_set
+        for i, bit in enumerate(mask) if not bit
+    )]
 
 
-def _fixed_violations(before: dict, contracts: dict) -> list[dict]:
+
+def _fixed_violations(before: dict, contracts: dict, sources=SOURCES) -> list[dict]:
     """Reject only constraints which changing annual orders cannot repair."""
     fixed_codes = {
         "INVESTMENT_OUTSIDE_HORIZON",
@@ -86,14 +86,14 @@ def _fixed_violations(before: dict, contracts: dict) -> list[dict]:
         if not contract["reservation_explicit"]:
             continue
         reserved = contract["reserved_capacity_t_per_year"]
-        if reserved > SOURCES[source_id]["capacity_t_per_year"] + EPSILON:
+        if reserved > sources[source_id]["capacity_t_per_year"] + EPSILON:
             errors.append(
                 {
                     "code": "FIXED_RESERVATION_EXCEEDS_CAPACITY",
                     "year": year,
                     "source": source_id,
                     "actual": reserved,
-                    "limit": SOURCES[source_id]["capacity_t_per_year"],
+                    "limit": sources[source_id]["capacity_t_per_year"],
                     "message": "Фиксированная бронь превышает мощность; измените контракт перед оптимизацией.",
                 }
             )
@@ -118,11 +118,14 @@ def optimize_supply_plan(plan: dict) -> dict:
     Orders are replaced; investments, explicit reservations, initial inventory,
     scenario, discount rate and sensitivity/lead-time assumptions stay fixed.
     """
+    SOURCES, _, YEARS = model_data(plan)
+    SOURCE_IDS = tuple(SOURCES)
+    frozen = locked_contracts(plan)
     started = perf_counter()
     before = calculate_plan(plan)
     keys = [(year, source) for year in YEARS for source in SOURCE_IDS]
     contracts = {key: source_contract(plan, key[1], key[0]) for key in keys}
-    errors = _fixed_violations(before, contracts)
+    errors = _fixed_violations(before, contracts, SOURCES)
     if errors:
         raise OptimizationError(
             "Фиксированные решения нарушают ограничения. Изменение закупок не устранит эти нарушения.",
@@ -181,7 +184,13 @@ def optimize_supply_plan(plan: dict) -> dict:
                   "reserved_period_t": contract["reserved_period_t"]
                   if contract["reservation_explicit"] else None}],
             )
-        bounds.append((0.0, upper))
+        if (year, source_id) in frozen:
+            quantity = frozen[year, source_id]
+            if quantity > upper + EPSILON:
+                raise OptimizationError("Зафиксированный контракт превышает доступную мощность после шока.", [{"year":year,"source":source_id,"committed_t":quantity,"capacity_t":upper}])
+            bounds.append((quantity, quantity))
+        else:
+            bounds.append((0.0, upper))
         if contract["active_days"]:
             net_daily[contract["day_start"] : contract["day_end"], index] = (
                 contract["delivery_share"] * (1 - data["loss_rate"]) / contract["active_days"]
@@ -225,7 +234,7 @@ def optimize_supply_plan(plan: dict) -> dict:
         previous_day = year_index * DAYS_PER_YEAR - 1
         rows.append(-cumulative_net[previous_day : previous_day + 1])
         limits.append(
-            np.array([closing_constant[previous_day] - reserve_requirement(year_data[year]["demand_total"])])
+            np.array([closing_constant[previous_day] - reserve_requirement(year_data[year]["demand_total"], plan.get("reserve_target_days", 45.0))])
         )
     if extra_rows:
         rows.append(np.asarray(extra_rows))
@@ -233,10 +242,12 @@ def optimize_supply_plan(plan: dict) -> dict:
     inequalities = csr_matrix(np.vstack(rows))
     inequality_limits = np.concatenate(limits)
 
-    masks = _emergency_masks()
+    masks = _emergency_masks(YEARS)
     candidates, solver_details = [], []
     emergency_indices = [index for index, (_, source) in enumerate(keys) if source == "E"]
     for mask in masks:
+        if any(not enabled and bounds[index][0] > EPSILON for index, enabled in zip(emergency_indices, mask)):
+            continue
         mask_bounds = list(bounds)
         for index, enabled in zip(emergency_indices, mask):
             if not enabled:
@@ -296,7 +307,7 @@ def optimize_supply_plan(plan: dict) -> dict:
             )
             capacities.append(
                 {"year": year, "demand_t": year_data[year]["demand_total"],
-                 "opening_reserve_t": reserve_requirement(year_data[year]["demand_total"]),
+                 "opening_reserve_t": reserve_requirement(year_data[year]["demand_total"], plan.get("reserve_target_days", 45.0)),
                  "maximum_regular_net_inflow_t": maximum_net,
                  "note": "Верхняя оценка учитывает мощности, бронь и сроки ввода; запрет цепочек E может её уменьшить."}
             )
@@ -336,6 +347,7 @@ def optimize_supply_plan(plan: dict) -> dict:
             "daily_steps": day_count,
             "primal_feasibility_tolerance": 1e-9,
             "investment_search_performed": False,
+            "locked_contract_count": len(frozen),
             "explanation": (
                 "Минимум NPV для фиксированных инвестиционных решений и допущения равномерных поставок "
                 "найден перебором всех максимальных допустимых наборов лет Emergency и решением LP для каждого. "

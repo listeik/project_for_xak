@@ -95,7 +95,7 @@ DEFAULT_DISCOUNT_RATE = 0.08
 DEFAULT_INITIAL_INVENTORY = 15.0
 RESERVE_DAYS = CONSTRAINTS["RESERVE_45D"]["value"]
 EPSILON = 1e-7
-MODEL_VERSION = "1.1-daily"
+MODEL_VERSION = "2.0-analytics"
 
 INPUT_FILES = tuple(sorted(DATA_DIR.glob("*.csv"))) + (
     SCENARIO_DIR / "mandatory_stress.yaml",

@@ -15,9 +15,9 @@ export function LogisticsGraph({ row, caseData, year, setYear }: {
 }) {
   const option = useMemo(() => {
     const fill = Math.min(1, Math.max(0, row.end_inventory / row.storage_capacity));
-    const nodes = caseData.sources.map((source) => ({
+    const nodes = caseData.sources.map((source, index) => ({
       id: source.source_id, name: source.name, value: row.source_breakdown[source.source_id].delivered_t,
-      x: positions[source.source_id][0], y: positions[source.source_id][1], symbolSize: 39,
+      x: caseData.sources.length === 5 ? positions[source.source_id][0] : 249 + 220*Math.cos(index*2*Math.PI/caseData.sources.length), y: caseData.sources.length === 5 ? positions[source.source_id][1] : 188 + 160*Math.sin(index*2*Math.PI/caseData.sources.length), symbolSize: 39,
       itemStyle: { color: '#152333', borderWidth: 2, borderColor: sourceColors[source.source_id] },
       label: { show: true, position: 'bottom', color: '#D2DDED', fontSize: 11, lineHeight: 18, formatter: `${source.source_id} · ${source.name}\n${number(row.source_breakdown[source.source_id].delivered_t)} т` },
     }));
@@ -32,7 +32,7 @@ export function LogisticsGraph({ row, caseData, year, setYear }: {
     }));
     return {
       textStyle: font,
-      tooltip: { ...tooltip, formatter: (params: { dataType: string; data: { name?: string; source?: string; target?: string; value?: number } }) => {
+      tooltip: { ...tooltip, renderMode: 'richText', formatter: (params: { dataType: string; data: { name?: string; source?: string; target?: string; value?: number } }) => {
         const data = params.data;
         return params.dataType === 'edge' ? `${data.source} → ${data.target}: ${number(data.value ?? 0)} т`
           : `${data.name}: ${number(data.value ?? 0)} т`;
@@ -58,7 +58,7 @@ export function LogisticsGraph({ row, caseData, year, setYear }: {
     };
   }, [row, caseData]);
   return <section className="panel logistics-panel">
-    <div className="panel-heading"><div><p className="eyebrow"><Network size={13} /> Сеть снабжения</p><h2>Орбитальный контур</h2></div><span className="small-badge">5 каналов · 1 узел</span></div>
+    <div className="panel-heading"><div><p className="eyebrow"><Network size={13} /> Сеть снабжения</p><h2>Орбитальный контур</h2></div><span className="small-badge">{caseData.sources.length} каналов · 1 узел</span></div>
     <div className="year-tabs" role="group" aria-label="Год редактирования плана">
       {caseData.years.map((value) => <button key={value} type="button" aria-pressed={year === value} className={year === value ? 'active' : ''} onClick={() => setYear(value)}>{value}</button>)}
     </div>
@@ -83,11 +83,11 @@ export function InventoryChart({ result }: { result: Calculation }) {
     dataZoom: [{ type: 'inside', filterMode: 'none' }, { type: 'slider', bottom: 8, height: 19, borderColor: gridLine, fillerColor: '#00F0FF18', handleStyle: { color: '#00B8C8' }, textStyle: { color: textColor, fontSize: 10 } }],
     series: [
       { name: 'Физический запас', type: 'line', data: result.inventory_trace.map((point) => point.inventory), symbol: 'none', lineStyle: { color: '#00F0FF', width: 2 }, itemStyle: { color: '#00F0FF' }, areaStyle: { color: '#00F0FF0F' } },
-      { name: '45-дневный резерв', type: 'line', data: result.inventory_trace.map((point) => point.reserve), symbol: 'none', lineStyle: { color: '#A276FF', type: 'dashed', width: 1.5 }, itemStyle: { color: '#A276FF' } },
+      { name: `Резерв: ${result.assumptions.reserve_target_days} дней`, type: 'line', data: result.inventory_trace.map((point) => point.reserve), symbol: 'none', lineStyle: { color: '#A276FF', type: 'dashed', width: 1.5 }, itemStyle: { color: '#A276FF' } },
       { name: 'Ёмкость', type: 'line', data: result.inventory_trace.map((point) => point.capacity), symbol: 'none', lineStyle: { color: '#69778E', type: 'dotted', width: 1 }, itemStyle: { color: '#69778E' } },
     ],
   }), [result]);
-  return <section className="panel"><div className="panel-heading"><div><p className="eyebrow"><Activity size={13} /> Материальный баланс</p><h2>Запас топлива по дням</h2></div><span className="small-badge">2035–2040</span></div><Chart option={option} label="Дневной физический запас, 45-дневный норматив резерва и ёмкость хранилища с 2035 по 2040 год" className="balance-chart" /><p className="chart-note">Линия резерва показана для ориентира; формальная проверка — на начало каждого года.</p></section>;
+  return <section className="panel"><div className="panel-heading"><div><p className="eyebrow"><Activity size={13} /> Материальный баланс</p><h2>Запас топлива по дням</h2></div><span className="small-badge">{result.annual_balances[0].year}–{result.annual_balances.at(-1)?.year}</span></div><Chart option={option} label={`Дневной физический запас, резерв ${result.assumptions.reserve_target_days} дней и ёмкость хранилища с ${result.annual_balances[0].year} по ${result.annual_balances.at(-1)?.year} год`} className="balance-chart" /><p className="chart-note">Линия резерва показана для ориентира; формальная проверка — на начало каждого года.</p></section>;
 }
 
 export function FinanceChart({ result }: { result: Calculation }) {

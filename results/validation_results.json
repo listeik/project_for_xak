@@ -1,0 +1,395 @@
+{
+  "model_version": "2.0-analytics",
+  "tolerance": "absolute 1e-7; relative 1e-9",
+  "rows": [
+    {
+      "test_id": "V01",
+      "inputs": {
+        "opening": 10,
+        "delivered": 30,
+        "losses": 2,
+        "served": 25
+      },
+      "expected": {
+        "closing_inventory_t": 13
+      },
+      "actual": {
+        "closing_inventory_t": 13
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "V02",
+      "inputs": {
+        "available": 8,
+        "demand": 10
+      },
+      "expected": {
+        "served_t": 8,
+        "shortage_t": 2,
+        "closing_inventory_t": 0
+      },
+      "actual": {
+        "served_t": 8,
+        "shortage_t": 2,
+        "closing_inventory_t": 0.0
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "V03",
+      "inputs": {
+        "order": 50,
+        "reserved": 100,
+        "TOP": 0.7,
+        "price": 2
+      },
+      "expected": {
+        "payable_volume_t": 70,
+        "variable_payment_mln": 140
+      },
+      "actual": {
+        "payable_volume_t": 70.0,
+        "variable_payment_mln": 140.0
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "V04",
+      "inputs": {
+        "same_as": "V03"
+      },
+      "expected": {
+        "variable_payment_mln": 140
+      },
+      "actual": {
+        "variable_payment_mln": 140.0
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "V05",
+      "inputs": {
+        "annual_capacity": 100,
+        "rate": 0.4,
+        "period_fraction": 0.5
+      },
+      "expected": {
+        "reservation_payment_mln": 20
+      },
+      "actual": {
+        "reservation_payment_mln": 20.0
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "V06",
+      "inputs": {
+        "gross": 20,
+        "loss_rate": 0.05
+      },
+      "expected": {
+        "losses_t": 1
+      },
+      "actual": {
+        "losses_t": 1.0
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "V07",
+      "inputs": {
+        "annual_demand": 365
+      },
+      "expected": {
+        "reserve_t": 45
+      },
+      "actual": {
+        "reserve_t": 45.0
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "V08",
+      "inputs": {
+        "reserved": 12,
+        "capacity": 10
+      },
+      "expected": {
+        "violation": "CAPACITY_EXCEEDED",
+        "excess_t": 2
+      },
+      "actual": {
+        "violation": "CAPACITY_EXCEEDED",
+        "excess_t": 2
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "V09",
+      "inputs": {
+        "total_demand": 100,
+        "critical_subset": 60
+      },
+      "expected": {
+        "total_demand_t": 100
+      },
+      "actual": {
+        "total_demand_t": 100
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "V10",
+      "inputs": {
+        "planned": 20,
+        "share": 0.5,
+        "reliability_metadata": 0.8
+      },
+      "expected": {
+        "actual_delivery_t": 10
+      },
+      "actual": {
+        "actual_delivery_t": 10.0
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E01",
+      "inputs": {
+        "gross": 100,
+        "loss_rates": [
+          0.045,
+          0.012
+        ]
+      },
+      "expected": {
+        "base_losses": 4.5,
+        "zbo_losses": 1.2
+      },
+      "actual": {
+        "base_losses": 4.5,
+        "zbo_losses": 1.2
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E02",
+      "inputs": {
+        "capex_2037": 1800,
+        "additional_2040": 1000
+      },
+      "expected": {
+        "violations": 0
+      },
+      "actual": {
+        "violations": 0
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E03",
+      "inputs": {
+        "capex_2037": 1801,
+        "additional_2040": 1000
+      },
+      "expected": {
+        "violations": 2
+      },
+      "actual": {
+        "violations": 2
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E04",
+      "inputs": {
+        "D2038": 80,
+        "D2039": 110,
+        "scenario": "MANDATORY_STRESS"
+      },
+      "expected": {
+        "D2038": 44.0,
+        "D2039": 82.5
+      },
+      "actual": {
+        "D2038": 44.0,
+        "D2039": 82.5
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E05",
+      "inputs": {
+        "source": "D",
+        "year": 2037
+      },
+      "expected": {
+        "active_days": 0
+      },
+      "actual": {
+        "active_days": 0
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E06",
+      "inputs": {
+        "net_startup_t": 15,
+        "loss_rate": 0.045,
+        "price": 6.2
+      },
+      "expected": {
+        "gross_t": 15.706806282722514,
+        "procurement_mln": 97.38219895287959,
+        "order_date": "2034-01-01",
+        "accounting_year": 2035
+      },
+      "actual": {
+        "gross_t": 15.706806282722514,
+        "procurement_mln": 97.38219895287959,
+        "order_date": "2034-01-01",
+        "accounting_year": 2035
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E07",
+      "inputs": {
+        "plan": "default BASE",
+        "tolerance_t": 1e-07
+      },
+      "expected": {
+        "balance_closes": true,
+        "feasible": true
+      },
+      "actual": {
+        "balance_closes": true,
+        "feasible": true
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E08",
+      "inputs": {
+        "demand_profile": "LOW"
+      },
+      "expected": {
+        "total_demand": 1112.0
+      },
+      "actual": {
+        "total_demand": 1112.0
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E09",
+      "inputs": {
+        "demand_profile": "HIGH"
+      },
+      "expected": {
+        "total_demand": 1673.0
+      },
+      "actual": {
+        "total_demand": 1673.0
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E10",
+      "inputs": {
+        "A2035": -1
+      },
+      "expected": {
+        "rejected": true
+      },
+      "actual": {
+        "rejected": true
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E11",
+      "inputs": {
+        "demand_factor": 0
+      },
+      "expected": {
+        "cost_per_ton_is_null": true
+      },
+      "actual": {
+        "cost_per_ton_is_null": true
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E12",
+      "inputs": {
+        "scenario": "MANDATORY_STRESS",
+        "zbo": false
+      },
+      "expected": {
+        "loss_limit_years": [
+          2038,
+          2039,
+          2040
+        ]
+      },
+      "actual": {
+        "loss_limit_years": [
+          2038,
+          2039,
+          2040
+        ]
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E13",
+      "inputs": {
+        "shock_year": 2038,
+        "change_A2038": -1
+      },
+      "expected": {
+        "contract_change_rejected": true
+      },
+      "actual": {
+        "contract_change_rejected": true
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E14",
+      "inputs": {
+        "extra_source": "F",
+        "last_year": 2042
+      },
+      "expected": {
+        "years": 8,
+        "sources": 6,
+        "balance_closes": true
+      },
+      "actual": {
+        "years": 8,
+        "sources": 6,
+        "balance_closes": true
+      },
+      "status": "PASSED"
+    },
+    {
+      "test_id": "E15",
+      "inputs": {
+        "scenario": "MANDATORY_STRESS",
+        "plan": "default"
+      },
+      "expected": {
+        "shortage_warnings": 3
+      },
+      "actual": {
+        "shortage_warnings": 3
+      },
+      "status": "PASSED"
+    }
+  ],
+  "passed": true,
+  "note": "Independent organiser controls V01–V10; E-series extends them. Protocol execution is not proof of economic optimality."
+}

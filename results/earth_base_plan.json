@@ -1,0 +1,66 @@
+{
+  "plan_id": "TEAM_EARTH",
+  "yearly_orders": {
+    "2035": {
+      "A": 107.07882091372012,
+      "B": 0.0,
+      "C": 0.0,
+      "D": 0.0,
+      "E": 0.0
+    },
+    "2036": {
+      "A": 147.9396594753455,
+      "B": 0.0,
+      "C": 0.0,
+      "D": 0.0,
+      "E": 0.0
+    },
+    "2037": {
+      "A": 190.0,
+      "B": 0.0,
+      "C": 9.794797848146459,
+      "D": 0.0,
+      "E": 0.0
+    },
+    "2038": {
+      "A": 190.0,
+      "B": 0.0,
+      "C": 84.39298985081227,
+      "D": 0.0,
+      "E": 0.0
+    },
+    "2039": {
+      "A": 190.0,
+      "B": 0.0,
+      "C": 130.0,
+      "D": 0.0,
+      "E": 0.0
+    },
+    "2040": {
+      "A": 190.0,
+      "B": 26.070656092257035,
+      "C": 130.0,
+      "D": 0.0,
+      "E": 0.0
+    }
+  },
+  "yearly_reservations": null,
+  "investments": {
+    "zbo_year": 2036,
+    "option_c_year": 2035,
+    "exercise_c_year": 2035,
+    "isru_funding_year": null
+  },
+  "scenario": "BASE",
+  "demand_profile": "BASE",
+  "research_config": null,
+  "research_shock": null,
+  "contract_lock": null,
+  "reserve_target_days": 45.0,
+  "initial_inventory_t": 15.0,
+  "discount_rate": 0.08,
+  "c_lead_months": 24.0,
+  "d_lead_months": 2.0,
+  "demand_factor": 1.0,
+  "price_factor": 1.0
+}

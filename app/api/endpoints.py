@@ -6,6 +6,8 @@ import hashlib
 import io
 import json
 from typing import Literal
+from threading import BoundedSemaphore
+import csv
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
@@ -16,6 +18,7 @@ from app.core.constants import INPUT_VERSION, MODEL_VERSION, case_metadata
 from app.schemas.plan import HealthResponse, PlanRequest
 
 router = APIRouter(prefix="/api/v1", tags=["Fuel planning"])
+analytics_slot = BoundedSemaphore(1)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -84,7 +87,7 @@ def export_envelope(plan: dict, result: dict) -> dict:
         ],
         "risk_register": [],
         "warning_details": result["warning_details"],
-        "risk_register_note": "Реестр FMEA не заполнен; вероятностная модель риска не выполнялась.",
+        "risk_register_note": "Реестр рисков рассчитывается отдельно в /analytics/risks или /contest-export; обычный экспорт содержит только текущий баланс.",
         "plan": plan,
         "result": result,
     }
@@ -197,3 +200,51 @@ def export_plan(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/extension-demo")
+def extension_demo(plan: PlanRequest, last_year: int = Query(default=2042, ge=2041, le=2045)) -> dict:
+    from app.core.configuration import extended_plan, model_data
+    payload = PlanRequest.model_validate(extended_plan(plan.model_dump(), last_year)).model_dump()
+    sources, demand, years = model_data(payload)
+    metadata = case_metadata()
+    metadata.update(years=list(years),sources=list(sources.values()),demand=list(demand.values()))
+    return {"plan":payload,"case_data":metadata,"result":calculate_plan(payload)}
+
+
+@router.post("/analytics/{kind}")
+def analytics(plan: PlanRequest, kind: Literal["comparison","stress","limits","risks","geopolitical","report"]) -> dict:
+    from app.core.analytics import comparison_bundle, stress_impact, crash_limits, risk_register, geopolitical, build_report
+    if not analytics_slot.acquire(blocking=False):
+        raise HTTPException(429,"Аналитический расчёт уже выполняется. Повторите запрос после его завершения.")
+    try:
+        operation={"comparison":comparison_bundle,"stress":stress_impact,"limits":crash_limits,"risks":risk_register,"geopolitical":geopolitical,"report":build_report}[kind]
+        return operation(plan.model_dump())
+    finally:
+        analytics_slot.release()
+
+
+@router.post("/contest-export")
+def contest_export(plan: PlanRequest, format: Literal["json","csv"] = Query(default="json")) -> Response:
+    report = analytics(plan, "report")
+    if format == "json":
+        content=json.dumps(report,ensure_ascii=False,allow_nan=False).encode("utf-8")
+        media_type="application/json"
+    else:
+        buffer=io.StringIO(newline="")
+        writer=csv.writer(buffer)
+        writer.writerow(["section","path","value_json","money_unit","fuel_unit"])
+        def visit(value, path):
+            if isinstance(value,dict) and value:
+                for key,item in value.items():
+                    visit(item,path+[str(key)])
+            elif isinstance(value,list) and value:
+                for index,item in enumerate(value):
+                    visit(item,path+[str(index)])
+            else:
+                # JSON strings start with a quote; untrusted content cannot become a formula.
+                writer.writerow([path[0],"/".join(path),json.dumps(value,ensure_ascii=False,allow_nan=False),"million constant-price 2035 units","t"])
+        visit(report,[])
+        content=buffer.getvalue().encode("utf-8-sig")
+        media_type="text/csv; charset=utf-8"
+    return Response(content,media_type=media_type,headers={"Content-Disposition":f'attachment; filename="contest-report-{report["plan_hash"][:10]}.{format}"'})

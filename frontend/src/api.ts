@@ -41,6 +41,16 @@ export const getCase = (signal?: AbortSignal) => request<CaseData>('/case', sign
 export const getDefaultPlan = (signal?: AbortSignal) => request<Plan>('/default-plan', signal);
 export const calculate = (plan: unknown, signal?: AbortSignal) => request<Calculation>('/calculate', signal, plan);
 export const optimize = (plan: Plan, signal?: AbortSignal) => request<OptimizedResponse>('/optimize', signal, plan);
+export const extensionDemo = (plan: Plan, signal?: AbortSignal) => request<{plan:Plan;result:Calculation;case_data:CaseData}>('/extension-demo',signal,plan);
+export const analyticalReport = <T>(plan:Plan,signal?:AbortSignal) => request<T>('/analytics/report',signal,plan);
+
+export async function exportContest(plan: Plan,format:'json'|'csv') {
+  let response: Response;
+  try {response=await fetch(`${base}/contest-export?format=${format}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(plan)});}
+  catch {throw new Error('Не удалось связаться с сервером для экспорта. Повторите запрос.');}
+  if (!response.ok) throw new Error(await errorMessage(response));
+  download(await response.blob(),`contest-report.${format}`);
+}
 
 export function download(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
